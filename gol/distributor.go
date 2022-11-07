@@ -11,6 +11,9 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 }
 
+const alive = 255
+const dead = 0
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
 
@@ -46,4 +49,58 @@ func distributor(p Params, c distributorChannels) {
 
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
+}
+
+func calculateNextState(p Params, world [][]byte) [][]byte {
+	grid := make([][]byte, p.ImageHeight)
+	for i := range world {
+		grid[i] = make([]byte, p.ImageWidth)
+	}
+
+	for x := 0; x < p.ImageWidth; x++ {
+		for y := 0; y < p.ImageHeight; y++ {
+			count := countAlive(p, x, y, world)
+			state := world[x][y]
+			if state == dead && count == 3 {
+				grid[x][y] = alive
+			} else if state == alive && (count < 2 || count > 3) {
+				grid[x][y] = dead
+			} else {
+				grid[x][y] = state
+			}
+		}
+	}
+
+	return grid
+}
+
+func countAlive(p Params, x int, y int, world [][]byte) int {
+	count := 0
+	for i := -1; i < 2; i++ {
+		for j := -1; j < 2; j++ {
+			if i == 0 && j == 0 {
+				continue
+			}
+
+			b := (x + i + p.ImageWidth) % p.ImageWidth
+			a := (y + j + p.ImageHeight) % p.ImageHeight
+
+			if world[b][a] == alive {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+func calculateAliveCells(p Params, world [][]byte) []cell {
+	var arr []cell
+	for x := 0; x < p.ImageWidth; x++ {
+		for y := 0; y < p.ImageHeight; y++ {
+			if world[x][y] == alive {
+				arr = append(arr, cell{x: y, y: x})
+			}
+		}
+	}
+	return arr
 }
