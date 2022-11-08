@@ -1,6 +1,7 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -23,12 +24,12 @@ const dead = 0
 
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels) {
-
+	c.ioCommand <- ioInput
 	// Create filename from parameters and send down the filename channel
 	filename := strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageHeight)
-	println(filename)
+	fmt.Println("File sent down channel", filename)
 	c.ioFilename <- filename
-
+	fmt.Println("Debug")
 	// TODO: Create a 2D slice to store the world.
 	world := make([][]byte, p.ImageHeight)
 	for i := range world {
@@ -42,11 +43,20 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	turn := 1
+	turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
 
-	for ; turn <= p.Turns; turn++ {
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			if world[i][j] == alive {
+				cellFlip := util.Cell{X: j, Y: i}
+				c.events <- CellFlipped{turn, cellFlip}
+			}
+		}
+	}
+
+	for ; turn < p.Turns; turn++ {
 		world = calculateNextState(p, world)
 	}
 
