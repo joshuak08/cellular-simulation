@@ -1,6 +1,9 @@
 package gol
 
-import "strconv"
+import (
+	"strconv"
+	"uk.ac.bris.cs/gameoflife/util"
+)
 
 type distributorChannels struct {
 	events     chan<- Event
@@ -9,6 +12,10 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+}
+
+type cell struct {
+	x, y int
 }
 
 const alive = 255
@@ -35,11 +42,26 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	turn := 0
+	turn := 1
 
 	// TODO: Execute all turns of the Game of Life.
 
+	for ; turn <= p.Turns; turn++ {
+		world = calculateNextState(p, world)
+	}
+
 	// TODO: Report the final state using FinalTurnCompleteEvent.
+	var aliveCell []util.Cell
+	for i := 0; i < len(world); i++ {
+		for j := 0; j < len(world[i]); j++ {
+			if world[i][j] == alive {
+				aliveCell = append(aliveCell, util.Cell{X: j, Y: i})
+			}
+		}
+	}
+
+	last := FinalTurnComplete{CompletedTurns: turn, Alive: aliveCell}
+	c.events <- last
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle

@@ -9,10 +9,6 @@ import (
 	"uk.ac.bris.cs/gameoflife/sdl"
 )
 
-type cell struct {
-	x, y int
-}
-
 // main is the function called when starting Game of Life with 'go run .'
 func main() {
 	runtime.LockOSThread()
