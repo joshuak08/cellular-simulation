@@ -74,55 +74,57 @@ func distributor(p Params, c distributorChannels) {
 }
 
 func calculateNextState(p Params, world [][]byte) [][]byte {
-	grid := make([][]byte, p.ImageHeight)
+	// Make allocates an array and returns a slice that refers to that array
+	newGrid := make([][]byte, p.ImageHeight)
 	for i := range world {
-		grid[i] = make([]byte, p.ImageWidth)
+		// Allocate each []byte within [][]byte
+		newGrid[i] = make([]byte, p.ImageWidth)
 	}
 
-	for x := 0; x < p.ImageWidth; x++ {
-		for y := 0; y < p.ImageHeight; y++ {
-			count := countAlive(p, x, y, world)
-			state := world[x][y]
-			if state == dead && count == 3 {
-				grid[x][y] = alive
-			} else if state == alive && (count < 2 || count > 3) {
-				grid[x][y] = dead
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			neighbours := countNeighbours(p, i, j, world)
+			state := world[i][j]
+			if state == dead && neighbours == 3 {
+				newGrid[i][j] = alive
+			} else if state == alive && (neighbours < 2 || neighbours > 3) {
+				newGrid[i][j] = dead
 			} else {
-				grid[x][y] = state
+				newGrid[i][j] = state
 			}
 		}
 	}
-
-	return grid
+	return newGrid
 }
 
-func countAlive(p Params, x int, y int, world [][]byte) int {
-	count := 0
+func countNeighbours(p Params, x, y int, world [][]byte) int {
+	var aliveCount = 0
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
+			// Don't count self as neighbour
 			if i == 0 && j == 0 {
 				continue
 			}
-
-			b := (x + i + p.ImageWidth) % p.ImageWidth
-			a := (y + j + p.ImageHeight) % p.ImageHeight
-
-			if world[b][a] == alive {
-				count++
+			// Wraparound. Add height and width for negative values
+			r := (x + i + p.ImageWidth) % p.ImageWidth
+			c := (y + j + p.ImageHeight) % p.ImageHeight
+			if world[r][c] == alive {
+				aliveCount++
 			}
 		}
 	}
-	return count
+	return aliveCount
 }
 
 func calculateAliveCells(p Params, world [][]byte) []cell {
-	var arr []cell
-	for x := 0; x < p.ImageWidth; x++ {
-		for y := 0; y < p.ImageHeight; y++ {
-			if world[x][y] == alive {
-				arr = append(arr, cell{x: y, y: x})
+	var aliveCells []cell
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			if world[i][j] == alive {
+				newCell := cell{x: j, y: i}
+				aliveCells = append(aliveCells, newCell)
 			}
 		}
 	}
-	return arr
+	return aliveCells
 }
