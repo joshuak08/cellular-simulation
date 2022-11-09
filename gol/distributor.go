@@ -3,6 +3,7 @@ package gol
 import (
 	"fmt"
 	"strconv"
+	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 )
 
@@ -56,9 +57,18 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
+	ticker := time.NewTicker(2 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker.C:
+				cells := AliveCellsCount{turn, countAlive(world)}
+				c.events <- cells
+			}
+		}
+	}()
 	for ; turn < p.Turns; turn++ {
 		var newPixelData [][]uint8
-
 		if p.Threads == 1 {
 			world = calculateNextState(p, world, 0, p.ImageHeight)
 		} else {
@@ -74,6 +84,7 @@ func distributor(p Params, c distributorChannels) {
 			}
 			world = newPixelData
 		}
+		c.events <- TurnComplete{turn}
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
@@ -86,6 +97,8 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
+	fmt.Println("turn ", turn)
+
 	last := FinalTurnComplete{CompletedTurns: turn, Alive: aliveCell}
 	c.events <- last
 
@@ -97,11 +110,24 @@ func distributor(p Params, c distributorChannels) {
 
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
+	ticker.Stop()
 }
 
 func worker(p Params, world [][]byte, startY int, endY int, out chan<- [][]uint8) {
 	test := calculateNextState(p, world, startY, endY)
 	out <- test
+}
+
+func countAlive(world [][]byte) int {
+	count := 0
+	for i := range world {
+		for j := range world[i] {
+			if world[i][j] == alive {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func calculateNextState(p Params, world [][]byte, startY int, endY int) [][]byte {
