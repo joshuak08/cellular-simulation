@@ -57,7 +57,7 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	for ; turn < p.Turns; turn++ {
-		//var newPixelData [][]uint8
+		var newPixelData [][]uint8
 
 		if p.Threads == 1 {
 			world = calculateNextState(p, world, 0, p.ImageHeight)
@@ -69,9 +69,10 @@ func distributor(p Params, c distributorChannels) {
 			for i := 0; i < p.Threads; i++ {
 				go worker(p, world, i*p.ImageHeight/p.Threads, (i+1)*p.ImageHeight/p.Threads, slice[i])
 			}
-			//for i := range slice {
-			//	newPixelData = append(newPixelData, <-slice[i]...)
-			//}
+			for i := 0; i < len(slice); i++ {
+				newPixelData = append(newPixelData, <-slice[i]...)
+			}
+			world = newPixelData
 		}
 	}
 
@@ -99,28 +100,28 @@ func distributor(p Params, c distributorChannels) {
 }
 
 func worker(p Params, world [][]byte, startY int, endY int, out chan<- [][]uint8) {
-	world = calculateNextState(p, world, startY, endY)
-	//out <- test
+	test := calculateNextState(p, world, startY, endY)
+	out <- test
 }
 
 func calculateNextState(p Params, world [][]byte, startY int, endY int) [][]byte {
 	// Make allocates an array and returns a slice that refers to that array
-	newGrid := make([][]byte, p.ImageHeight)
-	for i := range world {
+	height := endY - startY
+	newGrid := make([][]byte, height)
+	for i := range newGrid {
 		// Allocate each []byte within [][]byte
 		newGrid[i] = make([]byte, p.ImageWidth)
 	}
-
 	for i := startY; i < endY; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			neighbours := countNeighbours(p, i, j, world)
 			state := world[i][j]
 			if state == dead && neighbours == 3 {
-				newGrid[i][j] = alive
+				newGrid[i-startY][j] = alive
 			} else if state == alive && (neighbours < 2 || neighbours > 3) {
-				newGrid[i][j] = dead
+				newGrid[i-startY][j] = dead
 			} else {
-				newGrid[i][j] = state
+				newGrid[i-startY][j] = state
 			}
 		}
 	}
