@@ -3,6 +3,7 @@ package gol
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -14,10 +15,6 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
-}
-
-type cell struct {
-	x, y int
 }
 
 const alive = 255
@@ -57,22 +54,29 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
+	var mu sync.Mutex
 	ticker := time.NewTicker(2 * time.Second)
+	done := make(chan bool)
 	go func() {
 		for {
 			select {
+			case <-done:
+				return
 			case <-ticker.C:
-				cells := AliveCellsCount{turn, countAlive(world)}
+				mu.Lock()
+				cells := AliveCellsCount{turn, len(calculateAliveCells(p, world))}
 				c.events <- cells
+				mu.Unlock()
 			}
 		}
 	}()
+
 	for ; turn < p.Turns; turn++ {
 		var newPixelData [][]uint8
 		if p.Threads == 1 {
 			world = calculateNextState(p, world, 0, p.ImageHeight)
 		} else {
-			slice := []chan [][]uint8{}
+			var slice []chan [][]uint8
 			for i := 0; i < p.Threads; i++ {
 				slice = append(slice, make(chan [][]uint8))
 			}
@@ -82,7 +86,9 @@ func distributor(p Params, c distributorChannels) {
 			for i := 0; i < len(slice); i++ {
 				newPixelData = append(newPixelData, <-slice[i]...)
 			}
+			mu.Lock()
 			world = newPixelData
+			mu.Unlock()
 		}
 		c.events <- TurnComplete{turn}
 	}
@@ -100,6 +106,8 @@ func distributor(p Params, c distributorChannels) {
 	fmt.Println("turn ", turn)
 
 	last := FinalTurnComplete{CompletedTurns: turn, Alive: aliveCell}
+	ticker.Stop()
+	done <- true
 	c.events <- last
 
 	// Make sure that the Io has finished any output before exiting.
@@ -110,24 +118,10 @@ func distributor(p Params, c distributorChannels) {
 
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
-	ticker.Stop()
 }
 
 func worker(p Params, world [][]byte, startY int, endY int, out chan<- [][]uint8) {
-	test := calculateNextState(p, world, startY, endY)
-	out <- test
-}
-
-func countAlive(world [][]byte) int {
-	count := 0
-	for i := range world {
-		for j := range world[i] {
-			if world[i][j] == alive {
-				count++
-			}
-		}
-	}
-	return count
+	out <- calculateNextState(p, world, startY, endY)
 }
 
 func calculateNextState(p Params, world [][]byte, startY int, endY int) [][]byte {
@@ -173,12 +167,12 @@ func countNeighbours(p Params, x, y int, world [][]byte) int {
 	return aliveCount
 }
 
-func calculateAliveCells(p Params, world [][]byte) []cell {
-	var aliveCells []cell
+func calculateAliveCells(p Params, world [][]byte) []util.Cell {
+	var aliveCells []util.Cell
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			if world[i][j] == alive {
-				newCell := cell{x: j, y: i}
+				newCell := util.Cell{X: j, Y: i}
 				aliveCells = append(aliveCells, newCell)
 			}
 		}
