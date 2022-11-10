@@ -1,7 +1,6 @@
 package gol
 
 import (
-	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -25,9 +24,7 @@ func distributor(p Params, c distributorChannels) {
 	c.ioCommand <- ioInput
 	// Create filename from parameters and send down the filename channel
 	filename := strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageHeight)
-	fmt.Println("File sent down channel", filename)
 	c.ioFilename <- filename
-	fmt.Println("Debug")
 	// TODO: Create a 2D slice to store the world.
 	world := make([][]byte, p.ImageHeight)
 	for i := range world {
@@ -45,6 +42,8 @@ func distributor(p Params, c distributorChannels) {
 
 	// TODO: Execute all turns of the Game of Life.
 
+	// Notify GUI about a change of state of a single cell.
+	// Send this event for all cells that are alive when the image is loaded in.
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			if world[i][j] == alive {
@@ -63,6 +62,7 @@ func distributor(p Params, c distributorChannels) {
 			case <-done:
 				return
 			case <-ticker.C:
+				// Only one goroutine (worker) can notify user about currently alive cells at once
 				mu.Lock()
 				cells := AliveCellsCount{turn, len(calculateAliveCells(p, world))}
 				c.events <- cells
@@ -86,6 +86,18 @@ func distributor(p Params, c distributorChannels) {
 			for i := 0; i < len(slice); i++ {
 				newPixelData = append(newPixelData, <-slice[i]...)
 			}
+
+			// Notify GUI if the new cell is no longer the same state as the old cell
+			for i := 0; i < p.ImageHeight; i++ {
+				for j := 0; j < p.ImageWidth; j++ {
+					if newPixelData[i][j] != world[i][j] {
+						cellFlip := util.Cell{X: j, Y: i}
+						c.events <- CellFlipped{turn, cellFlip}
+					}
+				}
+			}
+
+			// Swap old world with new world once the alive cells count has been reported
 			mu.Lock()
 			world = newPixelData
 			mu.Unlock()
@@ -94,19 +106,22 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
-	var aliveCell []util.Cell
-	for i := 0; i < len(world); i++ {
-		for j := 0; j < len(world[i]); j++ {
-			if world[i][j] == alive {
-				aliveCell = append(aliveCell, util.Cell{X: j, Y: i})
-			}
+	c.ioCommand <- ioOutput
+
+	// Create output file from filename and current turn send down the filename channel
+	outfile := filename + "x" + strconv.Itoa(turn)
+	c.ioFilename <- outfile
+
+	// Send image byte by byte to output
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			c.ioOutput <- world[i][j]
 		}
 	}
 
-	fmt.Println("turn ", turn)
-
-	last := FinalTurnComplete{CompletedTurns: turn, Alive: aliveCell}
-	ticker.Stop()
+	c.events <- ImageOutputComplete{turn, filename}
+	last := FinalTurnComplete{CompletedTurns: turn, Alive: calculateAliveCells(p, world)}
+	// Tick until final turn
 	done <- true
 	c.events <- last
 
