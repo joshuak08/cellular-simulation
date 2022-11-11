@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -81,7 +80,6 @@ func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Respons
 	for ; turn < req.Turns; turn++ {
 		world = calculateNextState(world, 0, req.Height, req.Height, req.Width)
 	}
-	fmt.Println("len world", len(world))
 	res.Turns = turn
 	res.World = world
 	return

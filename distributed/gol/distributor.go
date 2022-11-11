@@ -21,11 +21,11 @@ type distributorChannels struct {
 const alive = 255
 const dead = 0
 
-func makeCall(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, threads int) [][]byte {
-	request := stubs.Request{world, ImageHeight, ImageWidth, threads}
+func makeCall(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
+	request := stubs.Request{world, ImageHeight, ImageWidth, Turns}
 	response := new(stubs.Response)
 	client.Call(stubs.TurnHandler, request, response)
-	return response.World
+	return response
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -50,7 +50,7 @@ func distributor(p Params, c distributorChannels) {
 	turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
-	done := make(chan bool)
+	//done := make(chan bool)
 
 	// TODO: RPC Client code
 
@@ -59,8 +59,8 @@ func distributor(p Params, c distributorChannels) {
 	client, _ := rpc.Dial("tcp", *server)
 	defer client.Close()
 
-	finalWorld := makeCall(client, world, p.ImageWidth, p.ImageHeight, p.Threads)
-	fmt.Println("final world ", len(finalWorld))
+	response := makeCall(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
+	fmt.Println("final world ", response.World)
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 	c.ioCommand <- ioOutput
@@ -72,22 +72,24 @@ func distributor(p Params, c distributorChannels) {
 	// Send image byte by byte to output
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
-			c.ioOutput <- world[i][j]
+			c.ioOutput <- response.World[i][j]
 		}
 	}
 
-	c.events <- ImageOutputComplete{turn, filename}
-	last := FinalTurnComplete{CompletedTurns: turn, Alive: calculateAliveCells(p, finalWorld)}
+	c.events <- ImageOutputComplete{response.Turns, filename}
+	last := FinalTurnComplete{CompletedTurns: response.Turns, Alive: calculateAliveCells(p, response.World)}
 	// Tick until final turn
-	done <- true
+	//done <- true
 	c.events <- last
+	fmt.Println("hello world1")
 
 	// Make sure that the Io has finished any output before exiting.
 	c.ioCommand <- ioCheckIdle
+	fmt.Println("hello world2")
 	<-c.ioIdle
+	fmt.Println("hello world ")
 
-	c.events <- StateChange{turn, Quitting}
-
+	c.events <- StateChange{response.Turns, Quitting}
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
 }
