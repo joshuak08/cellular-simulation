@@ -1,7 +1,6 @@
 package gol
 
 import (
-	"flag"
 	"fmt"
 	"net/rpc"
 	"strconv"
@@ -47,36 +46,36 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	turn := 0
+	//turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
 	//done := make(chan bool)
 
 	// TODO: RPC Client code
 
-	server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
-	flag.Parse()
-	client, _ := rpc.Dial("tcp", *server)
+	//server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
+	//flag.Parse()
+	client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
 	defer client.Close()
 
 	response := makeCall(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
 	fmt.Println("final world ", response.World)
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
-	c.ioCommand <- ioOutput
+	//c.ioCommand <- ioOutput
 
 	// Create output file from filename and current turn send down the filename channel
-	outfile := filename + "x" + strconv.Itoa(turn)
-	c.ioFilename <- outfile
+	//outfile := filename + "x" + strconv.Itoa(turn)
+	//c.ioFilename <- outfile
 
-	// Send image byte by byte to output
-	for i := 0; i < p.ImageHeight; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			c.ioOutput <- response.World[i][j]
-		}
-	}
+	//// Send image byte by byte to output
+	//for i := 0; i < p.ImageHeight; i++ {
+	//	for j := 0; j < p.ImageWidth; j++ {
+	//		c.ioOutput <- response.World[i][j]
+	//	}
+	//}
 
-	c.events <- ImageOutputComplete{response.Turns, filename}
+	//c.events <- ImageOutputComplete{response.Turns, filename}
 	last := FinalTurnComplete{CompletedTurns: response.Turns, Alive: calculateAliveCells(p, response.World)}
 	// Tick until final turn
 	//done <- true
