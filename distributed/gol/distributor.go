@@ -6,6 +6,7 @@ import (
 	"net/rpc"
 	"strconv"
 	"uk.ac.bris.cs/gameoflife/stubs"
+	"uk.ac.bris.cs/gameoflife/util"
 )
 
 type distributorChannels struct {
@@ -17,11 +18,14 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 }
 
-func makeCall(client *rpc.Client, message string) {
-	request := stubs.Request{Message: message}
+const alive = 255
+const dead = 0
+
+func makeCall(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, threads int) [][]byte {
+	request := stubs.Request{world, ImageHeight, ImageWidth, threads}
 	response := new(stubs.Response)
-	client.Call(stubs.ReverseHandler, request, response)
-	fmt.Println("Responded: " + response.Message)
+	client.Call(stubs.TurnHandler, request, response)
+	return response.World
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -49,12 +53,14 @@ func distributor(p Params, c distributorChannels) {
 	done := make(chan bool)
 
 	// TODO: RPC Client code
+
 	server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
 	flag.Parse()
 	client, _ := rpc.Dial("tcp", *server)
 	defer client.Close()
 
-	//res := makeCall(client, world, p.ImageWidth, p.ImageHeight, p.Threads)
+	finalWorld := makeCall(client, world, p.ImageWidth, p.ImageHeight, p.Threads)
+	fmt.Println("final world ", len(finalWorld))
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 	c.ioCommand <- ioOutput
@@ -71,7 +77,7 @@ func distributor(p Params, c distributorChannels) {
 	}
 
 	c.events <- ImageOutputComplete{turn, filename}
-	last := FinalTurnComplete{CompletedTurns: turn, Alive: calculateAliveCells(p, world)}
+	last := FinalTurnComplete{CompletedTurns: turn, Alive: calculateAliveCells(p, finalWorld)}
 	// Tick until final turn
 	done <- true
 	c.events <- last
@@ -84,4 +90,16 @@ func distributor(p Params, c distributorChannels) {
 
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
+}
+func calculateAliveCells(p Params, world [][]byte) []util.Cell {
+	var aliveCells []util.Cell
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			if world[i][j] == alive {
+				newCell := util.Cell{X: j, Y: i}
+				aliveCells = append(aliveCells, newCell)
+			}
+		}
+	}
+	return aliveCells
 }

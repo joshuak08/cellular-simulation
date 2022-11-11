@@ -1,15 +1,15 @@
 package stubs
 
-var ReverseHandler = "SecretStringOperations.Reverse"
-var PremiumReverseHandler = "SecretStringOperations.FastReverse"
-
+var TurnHandler = "GolOperations.CalculateNextWorld"
 
 type Response struct {
-	Message string
+	Turns int
+	World [][]byte
 }
 
 type Request struct {
-	Message string
+	World  [][]byte
+	Width  int
+	Height int
+	Turns  int
 }
-
-
