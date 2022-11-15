@@ -2,9 +2,11 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
+	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -71,6 +73,9 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 	return aliveCells
 }
 
+var aliveCount int
+var mu sync.Mutex
+
 type GolOperations struct{}
 
 func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
@@ -79,9 +84,19 @@ func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Respons
 	world := req.World
 	for ; turn < req.Turns; turn++ {
 		world = calculateNextState(world, 0, req.Height, req.Height, req.Width)
+		// Use mutexes somewhere
+		aliveCount = len(calculateAliveCells(world))
+		fmt.Println("Alive Cells", aliveCount)
 	}
 	res.Turns = turn
 	res.World = world
+	//res.AliveCells = aliveCount
+	return
+}
+
+func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
+	res.AliveCells = aliveCount
+	fmt.Println("--- Alive Cells ---", aliveCount)
 	return
 }
 
