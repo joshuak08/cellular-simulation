@@ -1,8 +1,8 @@
 package gol
 
 import (
+	"fmt"
 	"strconv"
-	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -14,13 +14,14 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 const alive = 255
 const dead = 0
 
 // distributor divides the work between workers and interacts with other goroutines.
-func distributor(p Params, c distributorChannels) {
+func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	c.ioCommand <- ioInput
 	// Create filename from parameters and send down the filename channel
 	filename := strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageHeight)
@@ -53,25 +54,60 @@ func distributor(p Params, c distributorChannels) {
 		}
 	}
 
-	var mu sync.Mutex
+	block := make(chan bool)
+	pPressed := false
 	ticker := time.NewTicker(2 * time.Second)
 	done := make(chan bool)
 	go func() {
 		for {
 			select {
+			case key := <-keyPresses:
+				switch key {
+				case 's':
+					c.ioCommand <- ioOutput
+					outfile := strconv.Itoa(turn)
+					c.ioFilename <- outfile
+					for i := 0; i < p.ImageHeight; i++ {
+						for j := 0; j < p.ImageWidth; j++ {
+							c.ioOutput <- world[i][j]
+						}
+					}
+					c.events <- ImageOutputComplete{turn, outfile}
+				case 'q':
+					c.ioCommand <- ioOutput
+					outfile := strconv.Itoa(turn)
+					c.ioFilename <- outfile
+					for i := 0; i < p.ImageHeight; i++ {
+						for j := 0; j < p.ImageWidth; j++ {
+							c.ioOutput <- world[i][j]
+						}
+					}
+					c.events <- ImageOutputComplete{turn, outfile}
+					c.events <- FinalTurnComplete{turn, calculateAliveCells(p, world)}
+				case 'p':
+					if pPressed == true {
+						fmt.Println("Continuing")
+						block <- false
+					} else {
+						fmt.Println("Paused", turn+1)
+					}
+					// Flip the p switch (pause/unpause)
+					pPressed = !pPressed
+				}
 			case <-done:
 				return
 			case <-ticker.C:
 				// Only one goroutine (worker) can notify user about currently alive cells at once
-				mu.Lock()
 				cells := AliveCellsCount{turn, len(calculateAliveCells(p, world))}
 				c.events <- cells
-				mu.Unlock()
 			}
 		}
 	}()
 
 	for ; turn < p.Turns; turn++ {
+		if pPressed {
+			<-block
+		}
 		var newPixelData [][]uint8
 		if p.Threads == 1 {
 			world = calculateNextState(p, world, 0, p.ImageHeight)
@@ -98,9 +134,7 @@ func distributor(p Params, c distributorChannels) {
 			}
 
 			// Swap old world with new world once the alive cells count has been reported
-			mu.Lock()
 			world = newPixelData
-			mu.Unlock()
 		}
 		c.events <- TurnComplete{turn}
 	}

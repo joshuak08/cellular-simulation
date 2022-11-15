@@ -1,12 +1,12 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
+	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -17,17 +17,17 @@ const dead = 0
 
 // Gol Logic
 
-func calculateNextState(p Params, world [][]byte, startY int, endY int) [][]byte {
+func calculateNextState(world [][]byte, startY, endY, ImageHeight, ImageWidth int) [][]byte {
 	// Make allocates an array and returns a slice that refers to that array
 	height := endY - startY
 	newGrid := make([][]byte, height)
 	for i := range newGrid {
 		// Allocate each []byte within [][]byte
-		newGrid[i] = make([]byte, p.ImageWidth)
+		newGrid[i] = make([]byte, ImageWidth)
 	}
 	for i := startY; i < endY; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			neighbours := countNeighbours(p, i, j, world)
+		for j := 0; j < ImageWidth; j++ {
+			neighbours := countNeighbours(i, j, world, ImageHeight, ImageWidth)
 			state := world[i][j]
 			if state == dead && neighbours == 3 {
 				newGrid[i-startY][j] = alive
@@ -41,7 +41,7 @@ func calculateNextState(p Params, world [][]byte, startY int, endY int) [][]byte
 	return newGrid
 }
 
-func countNeighbours(p Params, x, y int, world [][]byte) int {
+func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int {
 	var aliveCount = 0
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
@@ -50,8 +50,8 @@ func countNeighbours(p Params, x, y int, world [][]byte) int {
 				continue
 			}
 			// Wraparound. Add height and width for negative values
-			r := (x + i + p.ImageWidth) % p.ImageWidth
-			c := (y + j + p.ImageHeight) % p.ImageHeight
+			r := (x + i + ImageWidth) % ImageWidth
+			c := (y + j + ImageHeight) % ImageHeight
 			if world[r][c] == alive {
 				aliveCount++
 			}
@@ -60,10 +60,10 @@ func countNeighbours(p Params, x, y int, world [][]byte) int {
 	return aliveCount
 }
 
-func calculateAliveCells(p Params, world [][]byte) []util.Cell {
+func calculateAliveCells(world [][]byte) []util.Cell {
 	var aliveCells []util.Cell
-	for i := 0; i < p.ImageHeight; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
+	for i := 0; i < len(world); i++ {
+		for j := 0; j < len(world[i]); j++ {
 			if world[i][j] == alive {
 				newCell := util.Cell{X: j, Y: i}
 				aliveCells = append(aliveCells, newCell)
@@ -73,36 +73,30 @@ func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-/** Super-Secret `reversing a string' method we can't allow clients to see. **/
-func ReverseString(s string, i int) string {
-	time.Sleep(time.Duration(rand.Intn(i)) * time.Second)
-	runes := []rune(s)
-	for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-		runes[i], runes[j] = runes[j], runes[i]
+var aliveCount int
+var mu sync.Mutex
+
+type GolOperations struct{}
+
+func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
+
+	turn := 0
+	world := req.World
+	for ; turn < req.Turns; turn++ {
+		world = calculateNextState(world, 0, req.Height, req.Height, req.Width)
+		// Use mutexes somewhere
+		aliveCount = len(calculateAliveCells(world))
+		fmt.Println("Alive Cells", aliveCount)
 	}
-	return string(runes)
-}
-
-type SecretStringOperations struct{}
-
-func (s *SecretStringOperations) Reverse(req stubs.Request, res *stubs.Response) (err error) {
-	if req.Message == "" {
-		err = errors.New("A message must be specified")
-		return
-	}
-
-	fmt.Println("Got Message: " + req.Message)
-	res.Message = ReverseString(req.Message, 10)
+	res.Turns = turn
+	res.World = world
+	//res.AliveCells = aliveCount
 	return
 }
 
-func (s *SecretStringOperations) FastReverse(req stubs.Request, res *stubs.Response) (err error) {
-	if req.Message == "" {
-		err = errors.New("A message must be specified")
-		return
-	}
-
-	res.Message = ReverseString(req.Message, 2)
+func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
+	res.AliveCells = aliveCount
+	fmt.Println("--- Alive Cells ---", aliveCount)
 	return
 }
 
@@ -110,7 +104,7 @@ func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	rpc.Register(&SecretStringOperations{})
+	rpc.Register(&GolOperations{})
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 	rpc.Accept(listener)
