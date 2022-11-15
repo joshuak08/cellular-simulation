@@ -20,7 +20,7 @@ type distributorChannels struct {
 const alive = 255
 const dead = 0
 
-func makeCall(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
+func makeCallWorld(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
 	request := stubs.Request{world, ImageHeight, ImageWidth, Turns}
 	response := new(stubs.Response)
 	client.Call(stubs.TurnHandler, request, response)
@@ -31,6 +31,13 @@ func makeCallAliveCells(client *rpc.Client, world [][]byte, ImageWidth, ImageHei
 	request := stubs.Request{world, ImageHeight, ImageWidth, Turns}
 	response := new(stubs.Response)
 	client.Call(stubs.AliveHandler, request, response)
+	return response
+}
+
+func makeCallSnapshot(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
+	request := stubs.Request{world, ImageHeight, ImageWidth, Turns}
+	response := new(stubs.Response)
+	client.Call(stubs.SnapshotHandler, request, response)
 	return response
 }
 
@@ -56,7 +63,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
-	//done := make(chan bool)
+	done := make(chan bool)
 
 	client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
 	defer client.Close()
@@ -66,6 +73,22 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	go func() {
 		for {
 			select {
+			case key := <-keyPresses:
+				switch key {
+				case 's':
+					response := makeCallSnapshot(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
+					c.ioCommand <- ioOutput
+					outfile := strconv.Itoa(response.Turns)
+					c.ioFilename <- outfile
+					for i := 0; i < p.ImageHeight; i++ {
+						for j := 0; j < p.ImageWidth; j++ {
+							c.ioOutput <- response.World[i][j]
+						}
+					}
+					c.events <- ImageOutputComplete{response.Turns, outfile}
+				}
+			case <-done:
+				return
 			case <-ticker.C:
 				response := makeCallAliveCells(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
 				cells := AliveCellsCount{response.Turns, response.AliveCells}
@@ -79,26 +102,26 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
 	//flag.Parse()
 
-	response := makeCall(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
+	response := makeCallWorld(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
-	//c.ioCommand <- ioOutput
+	c.ioCommand <- ioOutput
 
-	// Create output file from filename and current turn send down the filename channel
-	//outfile := filename + "x" + strconv.Itoa(turn)
-	//c.ioFilename <- outfile
+	//Create output file from filename and current turn send down the filename channel
+	outfile := filename + "x" + strconv.Itoa(response.Turns)
+	c.ioFilename <- outfile
 
 	//// Send image byte by byte to output
-	//for i := 0; i < p.ImageHeight; i++ {
-	//	for j := 0; j < p.ImageWidth; j++ {
-	//		c.ioOutput <- response.World[i][j]
-	//	}
-	//}
+	for i := 0; i < p.ImageHeight; i++ {
+		for j := 0; j < p.ImageWidth; j++ {
+			c.ioOutput <- response.World[i][j]
+		}
+	}
 
-	//c.events <- ImageOutputComplete{response.Turns, filename}
+	c.events <- ImageOutputComplete{response.Turns, outfile}
 	last := FinalTurnComplete{CompletedTurns: response.Turns, Alive: calculateAliveCells(p, response.World)}
 	// Tick until final turn
-	//done <- true
+	done <- true
 	c.events <- last
 
 	// Make sure that the Io has finished any output before exiting.

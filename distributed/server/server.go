@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -92,7 +91,7 @@ func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Respons
 		aliveCount = lenAliveCount
 		mu.Unlock()
 
-		fmt.Println("Alive Cells", aliveCount)
+		//fmt.Println("Alive Cells", aliveCount)
 		turn++
 		globalTurns = turn
 	}
@@ -106,6 +105,12 @@ func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (
 	res.AliveCells = aliveCount
 	mu.Unlock()
 	res.Turns = globalTurns
+	return
+}
+
+func (s *GolOperations) makeCallSnapshot(req stubs.Request, res *stubs.Response) (err error) {
+	res.Turns = globalTurns
+	res.World = globalWorld
 	return
 }
 

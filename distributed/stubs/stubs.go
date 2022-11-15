@@ -2,6 +2,7 @@ package stubs
 
 var TurnHandler = "GolOperations.CalculateNextWorld"
 var AliveHandler = "GolOperations.CalculateAlive"
+var SnapshotHandler = "GolOperations.Snapshot"
 
 type Response struct {
 	Turns      int
