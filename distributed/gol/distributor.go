@@ -1,6 +1,7 @@
 package gol
 
 import (
+	"fmt"
 	"net/rpc"
 	"strconv"
 	"time"
@@ -15,6 +16,7 @@ type distributorChannels struct {
 	ioFilename chan<- string
 	ioOutput   chan<- uint8
 	ioInput    <-chan uint8
+	keyPresses <-chan rune
 }
 
 const alive = 255
@@ -69,23 +71,46 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	defer client.Close()
 
 	ticker := time.NewTicker(2 * time.Second)
+	block := make(chan bool)
+	pPressed := false
 
 	go func() {
 		for {
 			select {
 			case key := <-keyPresses:
+				snapshot := makeCallSnapshot(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
 				switch key {
 				case 's':
-					response := makeCallSnapshot(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
 					c.ioCommand <- ioOutput
-					outfile := strconv.Itoa(response.Turns)
+					outfile := strconv.Itoa(snapshot.Turns)
 					c.ioFilename <- outfile
 					for i := 0; i < p.ImageHeight; i++ {
 						for j := 0; j < p.ImageWidth; j++ {
-							c.ioOutput <- response.World[i][j]
+							c.ioOutput <- snapshot.World[i][j]
 						}
 					}
-					c.events <- ImageOutputComplete{response.Turns, outfile}
+					c.events <- ImageOutputComplete{snapshot.Turns, outfile}
+				case 'q':
+					c.ioCommand <- ioOutput
+					outfile := strconv.Itoa(snapshot.Turns)
+					c.ioFilename <- outfile
+					for i := 0; i < p.ImageHeight; i++ {
+						for j := 0; j < p.ImageWidth; j++ {
+							c.ioOutput <- world[i][j]
+						}
+					}
+					fmt.Println("Quitting")
+					c.events <- ImageOutputComplete{snapshot.Turns, outfile}
+					c.events <- FinalTurnComplete{snapshot.Turns, calculateAliveCells(p, snapshot.World)}
+				case 'p':
+					if pPressed == true {
+						fmt.Println("Continuing")
+						block <- false
+					} else {
+						fmt.Println("Paused", snapshot.Turns+1)
+					}
+					// Flip the p switch (pause/unpause)
+					pPressed = !pPressed
 				}
 			case <-done:
 				return

@@ -2,6 +2,7 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -108,9 +109,12 @@ func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (
 	return
 }
 
-func (s *GolOperations) makeCallSnapshot(req stubs.Request, res *stubs.Response) (err error) {
+func (s *GolOperations) Snapshot(req stubs.Request, res *stubs.Response) (err error) {
 	res.Turns = globalTurns
+	fmt.Println("globalWorld")
+	//mu.Lock()
 	res.World = globalWorld
+	//mu.Unlock()
 	return
 }
 
