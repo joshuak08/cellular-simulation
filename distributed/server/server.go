@@ -15,6 +15,11 @@ import (
 const alive = 255
 const dead = 0
 
+var aliveCount int
+var globalTurns int
+var mu sync.Mutex
+var globalWorld [][]byte
+
 // Gol Logic
 
 func calculateNextState(world [][]byte, startY, endY, ImageHeight, ImageWidth int) [][]byte {
@@ -73,30 +78,34 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-var aliveCount int
-var mu sync.Mutex
-
 type GolOperations struct{}
 
 func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
 
 	turn := 0
-	world := req.World
-	for ; turn < req.Turns; turn++ {
-		world = calculateNextState(world, 0, req.Height, req.Height, req.Width)
-		// Use mutexes somewhere
-		aliveCount = len(calculateAliveCells(world))
+	globalWorld = req.World
+	for turn < req.Turns {
+		globalWorld = calculateNextState(globalWorld, 0, req.Height, req.Height, req.Width)
+		lenAliveCount := len(calculateAliveCells(globalWorld))
+
+		mu.Lock()
+		aliveCount = lenAliveCount
+		mu.Unlock()
+
 		fmt.Println("Alive Cells", aliveCount)
+		turn++
+		globalTurns = turn
 	}
 	res.Turns = turn
-	res.World = world
-	//res.AliveCells = aliveCount
+	res.World = globalWorld
 	return
 }
 
 func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
+	mu.Lock()
 	res.AliveCells = aliveCount
-	fmt.Println("--- Alive Cells ---", aliveCount)
+	mu.Unlock()
+	res.Turns = globalTurns
 	return
 }
 
