@@ -3,6 +3,7 @@ package gol
 import (
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -20,6 +21,8 @@ type distributorChannels struct {
 const alive = 255
 const dead = 0
 
+var mu sync.Mutex
+
 // distributor divides the work between workers and interacts with other goroutines.
 func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	c.ioCommand <- ioInput
@@ -27,153 +30,129 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	filename := strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(p.ImageHeight)
 	c.ioFilename <- filename
 	// TODO: Create a 2D slice to store the world.
-	world := make([][]byte, p.ImageHeight)
-	for i := range world {
-		world[i] = make([]byte, p.ImageWidth)
-	}
+	world := makeWorld(p.ImageHeight, p.ImageWidth)
 
 	// Receive image byte by byte and store in 2d world
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
-			world[i][j] = <-c.ioInput
+			val := <-c.ioInput
+			world[i][j] = val
+			if val == alive {
+				aliveCell := util.Cell{X: j, Y: i}
+				c.events <- CellFlipped{CompletedTurns: 0, Cell: aliveCell}
+			}
 		}
 	}
-
-	turn := 0
 
 	// TODO: Execute all turns of the Game of Life.
 
-	// Notify GUI about a change of state of a single cell.
-	// Send this event for all cells that are alive when the image is loaded in.
-	for i := 0; i < p.ImageHeight; i++ {
-		for j := 0; j < p.ImageWidth; j++ {
-			if world[i][j] == alive {
-				cellFlip := util.Cell{X: j, Y: i}
-				c.events <- CellFlipped{turn, cellFlip}
-			}
-		}
-	}
-
-	block := make(chan bool)
-	pPressed := false
 	ticker := time.NewTicker(2 * time.Second)
-	done := make(chan bool)
-	go func() {
-		for {
-			select {
-			case key := <-keyPresses:
-				switch key {
-				case 's':
-					c.ioCommand <- ioOutput
-					outfile := strconv.Itoa(turn)
-					c.ioFilename <- outfile
-					for i := 0; i < p.ImageHeight; i++ {
-						for j := 0; j < p.ImageWidth; j++ {
-							c.ioOutput <- world[i][j]
-						}
-					}
-					c.events <- ImageOutputComplete{turn, outfile}
-				case 'q':
-					c.ioCommand <- ioOutput
-					outfile := strconv.Itoa(turn)
-					c.ioFilename <- outfile
-					for i := 0; i < p.ImageHeight; i++ {
-						for j := 0; j < p.ImageWidth; j++ {
-							c.ioOutput <- world[i][j]
-						}
-					}
-					c.events <- ImageOutputComplete{turn, outfile}
-					c.events <- FinalTurnComplete{turn, calculateAliveCells(p, world)}
-				case 'p':
-					if pPressed == true {
-						fmt.Println("Continuing")
-						block <- false
-					} else {
-						fmt.Println("Paused", turn+1)
-					}
-					// Flip the p switch (pause/unpause)
-					pPressed = !pPressed
-				}
-			case <-done:
-				return
-			case <-ticker.C:
-				// Only one goroutine (worker) can notify user about currently alive cells at once
-				cells := AliveCellsCount{turn, len(calculateAliveCells(p, world))}
-				c.events <- cells
-			}
-		}
-	}()
+	turn := 0
+	pPressed := false
+	for turn < p.Turns {
+		//fmt.Println("TEST")
 
-	for ; turn < p.Turns; turn++ {
-		if pPressed {
-			<-block
+		immutableWorld := makeImmutableWorld(world)
+
+		out := make([]chan [][]byte, p.Threads)
+		for i := range out {
+			out[i] = make(chan [][]byte)
 		}
+
+		//workerHeight := p.ImageHeight / p.Threads
 		var newPixelData [][]uint8
-		if p.Threads == 1 {
-			world = calculateNextState(p, world, 0, p.ImageHeight)
-		} else {
-			var slice []chan [][]uint8
-			for i := 0; i < p.Threads; i++ {
-				slice = append(slice, make(chan [][]uint8))
-			}
-			for i := 0; i < p.Threads; i++ {
-				go worker(p, world, i*p.ImageHeight/p.Threads, (i+1)*p.ImageHeight/p.Threads, slice[i])
-			}
-			for i := 0; i < len(slice); i++ {
-				newPixelData = append(newPixelData, <-slice[i]...)
-			}
+		for i := 0; i < p.Threads; i++ {
+			go worker(p, immutableWorld, i*p.ImageHeight/p.Threads, (i+1)*p.ImageHeight/p.Threads, out[i], c, turn)
+		}
 
-			// Notify GUI if the new cell is no longer the same state as the old cell
-			for i := 0; i < p.ImageHeight; i++ {
-				for j := 0; j < p.ImageWidth; j++ {
-					if newPixelData[i][j] != world[i][j] {
-						cellFlip := util.Cell{X: j, Y: i}
-						c.events <- CellFlipped{turn, cellFlip}
+		//newPixelData := makeWorld(0, 0)
+		for i := 0; i < len(out); i++ {
+			newPixelData = append(newPixelData, <-out[i]...)
+		}
+
+		world = newPixelData
+		turn++
+		c.events <- TurnComplete{turn}
+
+		select {
+		case <-ticker.C:
+			c.events <- AliveCellsCount{turn, len(calculateAliveCells(p, world))}
+		case key := <-keyPresses:
+			switch key {
+			case 's':
+				c.events <- StateChange{turn, Executing}
+				outImage(p, world, c, turn)
+			case 'q':
+				c.events <- StateChange{turn, Quitting}
+				outImage(p, world, c, turn)
+				c.events <- FinalTurnComplete{turn, calculateAliveCells(p, world)}
+			case 'p':
+				c.events <- StateChange{turn, Paused}
+				pPressed = true
+				for {
+					switch <-keyPresses {
+					case 'p':
+						c.events <- StateChange{turn, Executing}
+						fmt.Println("Continuing")
+						pPressed = false
+					}
+					if !pPressed {
+						break
 					}
 				}
 			}
-
-			// Swap old world with new world once the alive cells count has been reported
-			world = newPixelData
+		default:
 		}
-		c.events <- TurnComplete{turn}
 	}
-
-	// TODO: Report the final state using FinalTurnCompleteEvent.
-	c.ioCommand <- ioOutput
 
 	// Create output file from filename and current turn send down the filename channel
-	outfile := filename + "x" + strconv.Itoa(turn)
-	c.ioFilename <- outfile
+	outImage(p, world, c, turn)
 
+	// TODO: Report the final state using FinalTurnCompleteEvent.
+	// Make sure that the Io has finished any output before exiting.
+	c.ioCommand <- ioCheckIdle
+	<-c.ioIdle
+
+	c.events <- FinalTurnComplete{CompletedTurns: turn, Alive: calculateAliveCells(p, world)}
+	c.events <- StateChange{turn, Quitting}
+	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
+	close(c.events)
+}
+
+func outImage(p Params, world [][]byte, c distributorChannels, turn int) {
+	c.ioCommand <- ioOutput
+	outfile := strconv.Itoa(p.ImageWidth) + "x" + strconv.Itoa(p.ImageHeight) + "x" + strconv.Itoa(turn)
+	c.ioFilename <- outfile
 	// Send image byte by byte to output
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			c.ioOutput <- world[i][j]
 		}
 	}
-
-	c.events <- ImageOutputComplete{turn, filename}
-	last := FinalTurnComplete{CompletedTurns: turn, Alive: calculateAliveCells(p, world)}
-	// Tick until final turn
-	done <- true
-	c.events <- last
-
-	// Make sure that the Io has finished any output before exiting.
-	c.ioCommand <- ioCheckIdle
-	<-c.ioIdle
-
-	c.events <- StateChange{turn, Quitting}
-
-	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
-	close(c.events)
+	c.events <- ImageOutputComplete{turn, outfile}
 }
 
-func worker(p Params, world [][]byte, startY int, endY int, out chan<- [][]uint8) {
-	out <- calculateNextState(p, world, startY, endY)
+// makeMatrix makes and returns a 2D slice with the given dimensions.
+func makeWorld(height, width int) [][]byte {
+	matrix := make([][]byte, height)
+	for i := range matrix {
+		matrix[i] = make([]byte, width)
+	}
+	return matrix
 }
 
-func calculateNextState(p Params, world [][]byte, startY int, endY int) [][]byte {
+func makeImmutableWorld(world [][]byte) func(y, x int) byte {
+	return func(y, x int) byte {
+		return world[y][x]
+	}
+}
+
+func worker(p Params, immutableWorld func(y, x int) byte, startY int, endY int, tempWorld chan<- [][]uint8, c distributorChannels, turn int) {
+	calculatedSlice := calculateNextState(p, immutableWorld, startY, endY, c, turn)
+	tempWorld <- calculatedSlice
+}
+
+func calculateNextState(p Params, immutableWorld func(y, x int) byte, startY int, endY int, c distributorChannels, turn int) [][]byte {
 	// Make allocates an array and returns a slice that refers to that array
 	height := endY - startY
 	newGrid := make([][]byte, height)
@@ -181,23 +160,34 @@ func calculateNextState(p Params, world [][]byte, startY int, endY int) [][]byte
 		// Allocate each []byte within [][]byte
 		newGrid[i] = make([]byte, p.ImageWidth)
 	}
+	// Calculate world in current slice.
+	// Compare the cell with the one in the old world
 	for i := startY; i < endY; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
-			neighbours := countNeighbours(p, i, j, world)
-			state := world[i][j]
-			if state == dead && neighbours == 3 {
-				newGrid[i-startY][j] = alive
-			} else if state == alive && (neighbours < 2 || neighbours > 3) {
-				newGrid[i-startY][j] = dead
-			} else {
-				newGrid[i-startY][j] = state
+
+			neighbors := countNeighbours(p, j, i, immutableWorld)
+			if immutableWorld(i, j) == alive {
+				if neighbors == 2 || neighbors == 3 {
+					newGrid[i-startY][j] = alive
+				} else {
+					newGrid[i-startY][j] = dead
+					c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: j, Y: i}}
+				}
+			}
+
+			if immutableWorld(i, j) == dead {
+				if neighbors == 3 {
+					newGrid[i-startY][j] = alive
+					c.events <- CellFlipped{CompletedTurns: turn, Cell: util.Cell{X: j, Y: i}}
+				} else {
+					newGrid[i-startY][j] = dead
+				}
 			}
 		}
 	}
 	return newGrid
 }
-
-func countNeighbours(p Params, x, y int, world [][]byte) int {
+func countNeighbours(p Params, x, y int, immutableWorld func(y, x int) byte) int {
 	var aliveCount = 0
 	for i := -1; i < 2; i++ {
 		for j := -1; j < 2; j++ {
@@ -208,7 +198,7 @@ func countNeighbours(p Params, x, y int, world [][]byte) int {
 			// Wraparound. Add height and width for negative values
 			r := (x + i + p.ImageWidth) % p.ImageWidth
 			c := (y + j + p.ImageHeight) % p.ImageHeight
-			if world[r][c] == alive {
+			if immutableWorld(c, r) == alive {
 				aliveCount++
 			}
 		}
