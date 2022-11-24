@@ -3,6 +3,7 @@ package stubs
 var TurnHandler = "GolOperations.CalculateNextWorld"
 var AliveHandler = "GolOperations.CalculateAlive"
 var SnapshotHandler = "GolOperations.Snapshot"
+var ShutHandler = "GolOperations.ShutServer"
 
 type Response struct {
 	Turns      int
@@ -15,4 +16,5 @@ type Request struct {
 	Width  int
 	Height int
 	Turns  int
+	Kill   bool
 }

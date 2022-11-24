@@ -23,24 +23,31 @@ const alive = 255
 const dead = 0
 
 func makeCallWorld(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns}
+	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
 	response := new(stubs.Response)
 	client.Call(stubs.TurnHandler, request, response)
 	return response
 }
 
 func makeCallAliveCells(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns}
+	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
 	response := new(stubs.Response)
 	client.Call(stubs.AliveHandler, request, response)
 	return response
 }
 
 func makeCallSnapshot(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns}
+	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
 	response := new(stubs.Response)
 	client.Call(stubs.SnapshotHandler, request, response)
 	return response
+}
+
+func closeServer(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) {
+	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, true}
+	response := new(stubs.Response)
+	client.Call(stubs.ShutHandler, request, response)
+	return
 }
 
 // distributor divides the work between workers and interacts with other goroutines.
@@ -71,7 +78,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	defer client.Close()
 
 	ticker := time.NewTicker(2 * time.Second)
-	block := make(chan bool)
+	//block := make(chan bool)
 	pPressed := false
 
 	go func() {
@@ -103,14 +110,32 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 					c.events <- ImageOutputComplete{snapshot.Turns, outfile}
 					c.events <- FinalTurnComplete{snapshot.Turns, calculateAliveCells(p, snapshot.World)}
 				case 'p':
-					if pPressed == true {
-						fmt.Println("Continuing")
-						block <- false
-					} else {
-						fmt.Println("Paused", snapshot.Turns+1)
+					c.events <- StateChange{snapshot.Turns, Paused}
+					pPressed = true
+					for {
+						switch <-keyPresses {
+						case 'p':
+							c.events <- StateChange{snapshot.Turns, Executing}
+							fmt.Println("Continuing")
+							pPressed = false
+						}
+						if !pPressed {
+							break
+						}
 					}
-					// Flip the p switch (pause/unpause)
-					pPressed = !pPressed
+				case 'k':
+					c.ioCommand <- ioOutput
+					outfile := strconv.Itoa(snapshot.Turns)
+					c.ioFilename <- outfile
+					for i := 0; i < p.ImageHeight; i++ {
+						for j := 0; j < p.ImageWidth; j++ {
+							c.ioOutput <- world[i][j]
+						}
+					}
+					fmt.Println("Quitting and killing server")
+					c.events <- ImageOutputComplete{snapshot.Turns, outfile}
+					closeServer(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
+					c.events <- FinalTurnComplete{snapshot.Turns, calculateAliveCells(p, snapshot.World)}
 				}
 			case <-done:
 				return

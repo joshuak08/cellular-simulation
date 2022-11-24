@@ -19,6 +19,7 @@ var aliveCount int
 var globalTurns int
 var mu sync.Mutex
 var globalWorld [][]byte
+var shut chan bool
 
 // Gol Logic
 
@@ -78,7 +79,9 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-type GolOperations struct{}
+type GolOperations struct {
+	shut chan bool
+}
 
 func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
 
@@ -94,7 +97,9 @@ func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Respons
 
 		//fmt.Println("Alive Cells", aliveCount)
 		turn++
+		mu.Lock()
 		globalTurns = turn
+		mu.Unlock()
 	}
 	res.Turns = turn
 	res.World = globalWorld
@@ -105,7 +110,21 @@ func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (
 	mu.Lock()
 	res.AliveCells = aliveCount
 	mu.Unlock()
+
+	mu.Lock()
 	res.Turns = globalTurns
+	mu.Unlock()
+	return
+}
+
+func (s *GolOperations) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
+	s.shut <- true
+	//fmt.Println(req.Kill)
+	//shut <- true
+	//fmt.Println("test")
+	//if req.Kill == true {
+	//	os.Exit(3)
+	//}
 	return
 }
 
@@ -119,11 +138,27 @@ func (s *GolOperations) Snapshot(req stubs.Request, res *stubs.Response) (err er
 }
 
 func main() {
+	//shut <- false
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	rpc.Register(&GolOperations{})
+	task := &GolOperations{make(chan bool)}
+	rpc.Register(task)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
-	rpc.Accept(listener)
+
+	//var mu sync.Mutex
+	go rpc.Accept(listener)
+	select {
+	case <-task.shut:
+		fmt.Println("main")
+		close(task.shut)
+		listener.Close()
+	}
+	//<-shut
+	//			listener.Close()
+	//			return
+	//		}
+	//	}
+	//}()
 }
