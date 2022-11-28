@@ -1,0 +1,17 @@
+name,time/op (ns/op),±
+Gol/1_workers-16,1.30765E+10,0%
+Gol/2_workers-16,1.05982E+10,0%
+Gol/3_workers-16,9.75648E+09,0%
+Gol/4_workers-16,8.87002E+09,0%
+Gol/5_workers-16,8.65187E+09,0%
+Gol/6_workers-16,7.98135E+09,0%
+Gol/7_workers-16,7.49824E+09,0%
+Gol/8_workers-16,7.36776E+09,0%
+Gol/9_workers-16,7.01007E+09,0%
+Gol/10_workers-16,6.52156E+09,0%
+Gol/11_workers-16,6.41174E+09,0%
+Gol/12_workers-16,5.96087E+09,0%
+Gol/13_workers-16,6.00740E+09,0%
+Gol/14_workers-16,5.83612E+09,0%
+Gol/15_workers-16,5.49359E+09,0%
+Gol/16_workers-16,5.38740E+09,0%
