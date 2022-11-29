@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"net/rpc"
 	"strconv"
-	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -20,34 +19,32 @@ type distributorChannels struct {
 	keyPresses <-chan rune
 }
 
-var mu sync.Mutex
-
 const alive = 255
 const dead = 0
 
-func makeCallWorld(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, false}
+func makeCallWorld(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns, Threads int) *stubs.Response {
+	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, false, Threads}
 	response := new(stubs.Response)
 	client.Call(stubs.TurnHandler, request, response)
 	return response
 }
 
-func makeCallAliveCells(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, false}
+func makeCallAliveCells(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns, Threads int) *stubs.Response {
+	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, false, Threads}
 	response := new(stubs.Response)
 	client.Call(stubs.AliveHandler, request, response)
 	return response
 }
 
-func makeCallSnapshot(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
+func makeCallSnapshot(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns, Threads int) *stubs.Response {
+	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false, Threads}
 	response := new(stubs.Response)
 	client.Call(stubs.SnapshotHandler, request, response)
 	return response
 }
 
-func closeServer(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) {
-	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, true}
+func closeServer(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns, Threads int) {
+	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, true, Threads}
 	response := new(stubs.Response)
 	client.Call(stubs.ShutHandler, request, response)
 	return
@@ -72,26 +69,20 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		}
 	}
 
-	//turn := 0
-
 	// TODO: Execute all turns of the Game of Life.
 	done := make(chan bool)
 
-	//client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
 	broker, _ := rpc.Dial("tcp", "127.0.0.1:8030")
 	defer broker.Close()
 
 	ticker := time.NewTicker(2 * time.Second)
-	//block := make(chan bool)
 	pPressed := false
-
-	killed := false
 
 	go func() {
 		for {
 			select {
 			case key := <-keyPresses:
-				snapshot := makeCallSnapshot(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
+				snapshot := makeCallSnapshot(broker, world, p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
 				switch key {
 				case 's':
 					c.ioCommand <- ioOutput
@@ -131,7 +122,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 					}
 				case 'k':
 					c.ioCommand <- ioOutput
-					killed = true
+					//killed = true
 					outfile := strconv.Itoa(snapshot.Turns)
 					c.ioFilename <- outfile
 					for i := 0; i < p.ImageHeight; i++ {
@@ -143,35 +134,24 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 					c.events <- ImageOutputComplete{snapshot.Turns, outfile}
 					c.events <- FinalTurnComplete{snapshot.Turns, calculateAliveCells(p, snapshot.World)}
 
-					fmt.Println("before closeServer")
-					closeServer(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
-					fmt.Println("after closeServer")
+					closeServer(broker, world, p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
 					c.ioCommand <- ioCheckIdle
 					<-c.ioIdle
 					c.events <- StateChange{snapshot.Turns, Quitting}
-					//fmt.Println("asdf")
 				}
 			case <-done:
 				return
 			case <-ticker.C:
-				alive := makeCallAliveCells(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
-				cells := AliveCellsCount{alive.Turns, alive.AliveCells}
+				tick := makeCallAliveCells(broker, world, p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
+				cells := AliveCellsCount{tick.Turns, tick.AliveCells}
 				c.events <- cells
 			}
 		}
 	}()
-	//fmt.Println("test")
 
-	//fmt.Println("after if ", killed)
-	//mu.Lock()
-	fmt.Println("response")
-	response := makeCallWorld(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
-	//mu.Unlock()
+	response := makeCallWorld(broker, world, p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
 
 	// TODO: RPC Client code
-
-	//server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
-	//flag.Parse()
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 	c.ioCommand <- ioOutput
@@ -180,17 +160,12 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	outfile := filename + "x" + strconv.Itoa(response.Turns)
 	c.ioFilename <- outfile
 
-	//// Send image byte by byte to output
-	fmt.Println("before for loop")
-	//fmt.Println(killed)
-	//if killed == false {
+	// Send image byte by byte to output
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			c.ioOutput <- response.World[i][j]
 		}
 	}
-	fmt.Println("after  for loop")
-	//}
 
 	c.events <- ImageOutputComplete{response.Turns, outfile}
 	last := FinalTurnComplete{CompletedTurns: response.Turns, Alive: calculateAliveCells(p, response.World)}
@@ -207,6 +182,8 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
 }
+
+// Calculates number of alive cells in the world after each iteration, it returns a slice with type util.Cell
 func calculateAliveCells(p Params, world [][]byte) []util.Cell {
 	var aliveCells []util.Cell
 	for i := 0; i < p.ImageHeight; i++ {

@@ -21,18 +21,18 @@ var aliveCount int
 var globalTurns int
 var mu sync.Mutex
 var globalWorld [][]byte
-var shut chan bool
 
-// Gol Logic
-
+// GoL logic to calculate next state for the world, that returns a 2d slice
 func calculateNextState(world [][]byte, startY, endY, ImageHeight, ImageWidth int) [][]byte {
-	// Make allocates an array and returns a slice that refers to that array
+	// newGrid creates a new slice that will return the new world, with height that is proportionately separated with other nodes
 	height := endY - startY
 	newGrid := make([][]byte, height)
 	for i := range newGrid {
 		// Allocate each []byte within [][]byte
 		newGrid[i] = make([]byte, ImageWidth)
 	}
+
+	//
 	for i := startY; i < endY; i++ {
 		for j := 0; j < ImageWidth; j++ {
 			neighbours := countNeighbours(i, j, world, ImageHeight, ImageWidth)
@@ -70,6 +70,7 @@ func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int 
 	return aliveCount
 }
 
+// Calculates number of alive cells in the world after each iteration, it returns a slice with type util.Cell
 func calculateAliveCells(world [][]byte) []util.Cell {
 	var aliveCells []util.Cell
 	for i := 0; i < len(world); i++ {
@@ -83,9 +84,7 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 	return aliveCells
 }
 
-type GolOperations struct {
-	shut chan bool
-}
+type GolOperations struct{}
 
 func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Response) (err error) {
 	turn := 0
@@ -133,11 +132,12 @@ func (s *GolOperations) Snapshot(req stubs.Request, res *stubs.Response) (err er
 	return
 }
 
+// Main function to setup the server and listens on port :8030
 func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	task := &GolOperations{make(chan bool)}
+	task := &GolOperations{}
 	rpc.Register(task)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()

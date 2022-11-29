@@ -12,11 +12,10 @@ type Response struct {
 }
 
 type Request struct {
-	World [][]byte
-	Width int
-	//StartY int
-	//EndY   int
-	Height int
-	Turns  int
-	Kill   bool
+	World   [][]byte
+	Width   int
+	Height  int
+	Turns   int
+	Kill    bool
+	Threads int
 }

@@ -1,8 +1,6 @@
 package bStubs
 
 var BTurnHandler = "GolOperations.CalculateNextWorld"
-var BAliveHandler = "GolOperations.CalculateAlive"
-var BSnapshotHandler = "GolOperations.Snapshot"
 var BShutHandler = "GolOperations.ShutServer"
 
 type Response struct {
