@@ -96,7 +96,6 @@ func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Respo
 	aliveCount = lenAliveCount
 	mu.Unlock()
 
-	//fmt.Println("Alive Cells", aliveCount)
 	turn++
 	mu.Lock()
 	globalTurns = turn
@@ -120,13 +119,6 @@ func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (
 
 func (s *GolOperations) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
 	os.Exit(3)
-	//s.shut <- true
-	//fmt.Println(req.Kill)
-	//shut <- true
-	//fmt.Println("test")
-	//if req.Kill == true {
-	//	os.Exit(3)
-	//}
 	return
 }
 
@@ -140,9 +132,6 @@ func (s *GolOperations) Snapshot(req stubs.Request, res *stubs.Response) (err er
 }
 
 func main() {
-	//shut <- false
-	//var port string
-	//flag.StringVar(&port, "p", "root", "Specify username. Default is root")
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
@@ -151,18 +140,5 @@ func main() {
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 
-	//var mu sync.Mutex
 	rpc.Accept(listener)
-	//select {
-	//case <-task.shut:
-	//	fmt.Println("main")
-	//	close(task.shut)
-	//	listener.Close()
-	//}
-	//<-shut
-	//			listener.Close()
-	//			return
-	//		}
-	//	}
-	//}()
 }

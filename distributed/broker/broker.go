@@ -4,7 +4,6 @@ import (
 	//"distributed/bStubs"
 	//"bStubs"
 	"flag"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -27,8 +26,6 @@ var mu sync.Mutex
 var globalWorld [][]byte
 var workers []*rpc.Client
 
-//workers := make([]*rpc.Client, 4)
-
 // Gol Logic
 
 type distributorChannels struct {
@@ -42,45 +39,36 @@ type distributorChannels struct {
 }
 
 func makeCallWorld(client *rpc.Client, world [][]byte, ImageHeight, ImageWidth, StartY, EndY, Turns int, out chan [][]byte) {
-	test := bStubs.Request{world, ImageWidth, StartY, EndY, ImageHeight, Turns, false}
-	//request := stubs.Request{world, ImageWidth, StartY, EndY, Turns, false}
+	request := bStubs.Request{world, ImageWidth, StartY, EndY, ImageHeight, Turns, false}
 	response := new(bStubs.Response)
-	client.Call(bStubs.BTurnHandler, test, response)
+	client.Call(bStubs.BTurnHandler, request, response)
 	out <- response.World
 	return
 	//return response
 }
 
-func makeCallAliveCells(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
-	response := new(stubs.Response)
-	client.Call(stubs.AliveHandler, request, response)
-	return response
-}
-
-func makeCallSnapshot(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
-	response := new(stubs.Response)
-	client.Call(stubs.SnapshotHandler, request, response)
-	return response
-}
+//func makeCallAliveCells(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
+//	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
+//	response := new(stubs.Response)
+//	client.Call(stubs.AliveHandler, request, response)
+//	return response
+//}
+//
+//func makeCallSnapshot(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
+//	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
+//	response := new(stubs.Response)
+//	client.Call(stubs.SnapshotHandler, request, response)
+//	return response
+//}
 
 func closeServers(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) {
 	request := bStubs.Request{world, ImageWidth, 0, 0, ImageHeight, Turns, true}
 	response := new(bStubs.Response)
 	client.Call(bStubs.BShutHandler, request, response)
-	fmt.Println("closeServers")
 	return
 }
 
 func splitWorkers(req stubs.Request, world [][]byte, workers []*rpc.Client) [][]byte {
-
-	//world := req.World
-
-	//worker1, _ := rpc.Dial("tcp", "127.0.0.1.8031")
-	//worker2, _ := rpc.Dial("tcp", "127.0.0.1.8032")
-	//worker3, _ := rpc.Dial("tcp", "127.0.0.1.8033")
-	//worker4, _ := rpc.Dial("tcp", "127.0.0.1.8034")
 
 	//done := make(chan bool)
 	//ticker := time.NewTicker(2 * time.Second)
@@ -157,7 +145,6 @@ func splitWorkers(req stubs.Request, world [][]byte, workers []*rpc.Client) [][]
 		out[i] = make(chan [][]byte)
 	}
 
-	//for turn := 0; turn < req.Turns; {
 	for j := 0; j < 4; j++ {
 		go makeCallWorld(workers[j], world, req.Height, req.Width, j*len(world)/4, (j+1)*(len(world))/4, req.Turns, out[j])
 	}
@@ -166,11 +153,6 @@ func splitWorkers(req stubs.Request, world [][]byte, workers []*rpc.Client) [][]
 		newPixelData = append(newPixelData, <-out[i]...)
 	}
 	return newPixelData
-	//turn++
-	//c.events <- TurnComplete{turn}
-	//}
-
-	//response := makeCallWorld(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
 }
 
 type Broker struct {
@@ -234,42 +216,27 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 }
 
 func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
-	fmt.Println("calculateNextWorld start")
-
 	turn := 0
 	globalWorld = req.World
 	for turn < req.Turns {
 		globalWorld = splitWorkers(req, globalWorld, workers)
-		//world = globalWorld
-		//globalWorld = calculateNextState(globalWorld, 0, req.Height, req.Height, req.Width)
 		lenAliveCount := len(calculateAliveCells(globalWorld))
-
-		//if req.Turns == 100 {
-		//	fmt.Println(turn)
-		//}
 
 		mu.Lock()
 		aliveCount = lenAliveCount
 		mu.Unlock()
 
-		//fmt.Println("Alive Cells", aliveCount)
 		turn++
 		mu.Lock()
 		globalTurns = turn
 		mu.Unlock()
-
-		//mu.Lock()
-		//req.World = globalWorld
-		//mu.Unlock()
 	}
 	res.Turns = turn
 	res.World = globalWorld
-	fmt.Println("calculateNextWorld end")
 	return
 }
 
 func (s *Broker) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
-	fmt.Println("alive")
 	mu.Lock()
 	res.AliveCells = aliveCount
 	mu.Unlock()
@@ -287,19 +254,11 @@ func (s *Broker) ShutServer(req stubs.Request, res *stubs.Response) (err error) 
 		mu.Unlock()
 	}
 	os.Exit(3)
-	//s.shut <- true
-	//fmt.Println(req.Kill)
-	//shut <- true
-	//fmt.Println("test")
-	//if req.Kill == true {
-	//	os.Exit(3)
-	//}
 	return
 }
 
 func (s *Broker) Snapshot(req stubs.Request, res *stubs.Response) (err error) {
 	res.Turns = globalTurns
-	fmt.Println("globalWorld")
 	//mu.Lock()
 	res.World = globalWorld
 	//mu.Unlock()
@@ -307,7 +266,6 @@ func (s *Broker) Snapshot(req stubs.Request, res *stubs.Response) (err error) {
 }
 
 func main() {
-	//shut <- false
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
@@ -326,19 +284,5 @@ func main() {
 		defer workers[i].Close()
 	}
 
-	//var mu sync.Mutex
 	rpc.Accept(listener)
-	//fmt.Println("broker main")
-	//select {
-	//case <-task.shut:
-	//	fmt.Println("main")
-	//	close(task.shut)
-	//	listener.Close()
-	//}
-	//<-shut
-	//			listener.Close()
-	//			return
-	//		}
-	//	}
-	//}()
 }

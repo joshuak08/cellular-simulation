@@ -9,7 +9,6 @@ type Response struct {
 	Turns      int
 	World      [][]byte
 	AliveCells int
-	//IoCommand chan<- gol.TurnComplete
 }
 
 type Request struct {
