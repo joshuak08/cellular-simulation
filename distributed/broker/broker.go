@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/rpc"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/bStubs"
@@ -25,6 +24,7 @@ var globalTurns int
 var mu sync.Mutex
 var globalWorld [][]byte
 var workers []*rpc.Client
+var working []bool
 
 // Gol Logic
 
@@ -275,12 +275,26 @@ func main() {
 	defer listener.Close()
 
 	workers = make([]*rpc.Client, 4)
-	address := "127.0.0.1:803"
+	working = make([]bool, 4)
+	address := make([]string, 4)
+	address[0] = "100.27.8.12"
+	address[1] = "3.238.103.194"
+	address[2] = "44.195.87.194"
+	address[3] = "44.195.68.98"
+	port := ":8030"
+
 	for i := 0; i < 4; i++ {
-		end := strconv.Itoa(i + 1)
-		workers[i], _ = rpc.Dial("tcp", address+end)
-		//fmt.Println(address + end)
-		//fmt.Println(reflect.TypeOf(address + end))
+		//end := strconv.Itoa(i + 1)
+		//err := error()
+		worker, err := rpc.Dial("tcp", address[i]+port)
+
+		if err != nil {
+			working[i] = false
+		} else {
+			working[i] = true
+		}
+
+		workers[i] = worker
 		defer workers[i].Close()
 	}
 
