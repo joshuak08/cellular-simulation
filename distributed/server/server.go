@@ -60,6 +60,8 @@ func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int 
 			// Wraparound. Add height and width for negative values
 			r := (x + i + ImageWidth) % ImageWidth
 			c := (y + j + ImageHeight) % ImageHeight
+			fmt.Println("print r", r)
+			fmt.Println("print c", c)
 			if world[r][c] == alive {
 				aliveCount++
 			}

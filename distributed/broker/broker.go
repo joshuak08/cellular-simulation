@@ -281,20 +281,21 @@ func main() {
 	address[1] = "3.238.103.194"
 	address[2] = "44.195.87.194"
 	address[3] = "44.195.68.98"
+	//address := "127.0.0.1"
 	port := ":8030"
 
 	for i := 0; i < 4; i++ {
 		//end := strconv.Itoa(i + 1)
 		//err := error()
-		worker, err := rpc.Dial("tcp", address[i]+port)
+		workers[i], _ = rpc.Dial("tcp", address[i]+port)
 
-		if err != nil {
-			working[i] = false
-		} else {
-			working[i] = true
-		}
+		//if err != nil {
+		//	working[i] = false
+		//} else {
+		//	working[i] = true
+		//}
 
-		workers[i] = worker
+		//workers[i] = worker
 		defer workers[i].Close()
 	}
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/rpc"
 	"strconv"
+	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
@@ -18,6 +19,8 @@ type distributorChannels struct {
 	ioInput    <-chan uint8
 	keyPresses <-chan rune
 }
+
+var mu sync.Mutex
 
 const alive = 255
 const dead = 0
@@ -82,6 +85,8 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	//block := make(chan bool)
 	pPressed := false
 
+	killed := false
+
 	go func() {
 		for {
 			select {
@@ -126,6 +131,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 					}
 				case 'k':
 					c.ioCommand <- ioOutput
+					killed = true
 					outfile := strconv.Itoa(snapshot.Turns)
 					c.ioFilename <- outfile
 					for i := 0; i < p.ImageHeight; i++ {
@@ -135,8 +141,15 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 					}
 					fmt.Println("Quitting and killing server")
 					c.events <- ImageOutputComplete{snapshot.Turns, outfile}
-					closeServer(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
 					c.events <- FinalTurnComplete{snapshot.Turns, calculateAliveCells(p, snapshot.World)}
+
+					fmt.Println("before closeServer")
+					closeServer(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
+					fmt.Println("after closeServer")
+					c.ioCommand <- ioCheckIdle
+					<-c.ioIdle
+					c.events <- StateChange{snapshot.Turns, Quitting}
+					//fmt.Println("asdf")
 				}
 			case <-done:
 				return
@@ -147,8 +160,13 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 			}
 		}
 	}()
+	//fmt.Println("test")
 
+	//fmt.Println("after if ", killed)
+	//mu.Lock()
+	fmt.Println("response")
 	response := makeCallWorld(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
+	//mu.Unlock()
 
 	// TODO: RPC Client code
 
@@ -163,11 +181,16 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	c.ioFilename <- outfile
 
 	//// Send image byte by byte to output
+	fmt.Println("before for loop")
+	//fmt.Println(killed)
+	//if killed == false {
 	for i := 0; i < p.ImageHeight; i++ {
 		for j := 0; j < p.ImageWidth; j++ {
 			c.ioOutput <- response.World[i][j]
 		}
 	}
+	fmt.Println("after  for loop")
+	//}
 
 	c.events <- ImageOutputComplete{response.Turns, outfile}
 	last := FinalTurnComplete{CompletedTurns: response.Turns, Alive: calculateAliveCells(p, response.World)}
@@ -180,6 +203,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	<-c.ioIdle
 
 	c.events <- StateChange{response.Turns, Quitting}
+
 	// Close the channel to stop the SDL goroutine gracefully. Removing may cause deadlock.
 	close(c.events)
 }
