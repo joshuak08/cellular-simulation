@@ -235,13 +235,7 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 
 func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
 	fmt.Println("calculateNextWorld start")
-	workers = make([]*rpc.Client, 4)
-	address := "127.0.0.1:803"
-	for i := 0; i < 4; i++ {
-		end := strconv.Itoa(i + 1)
-		workers[i], _ = rpc.Dial("tcp", address+end)
-		defer workers[i].Close()
-	}
+
 	turn := 0
 	globalWorld = req.World
 	for turn < req.Turns {
@@ -275,6 +269,7 @@ func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err
 }
 
 func (s *Broker) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
+	fmt.Println("alive")
 	mu.Lock()
 	res.AliveCells = aliveCount
 	mu.Unlock()
@@ -286,8 +281,10 @@ func (s *Broker) CalculateAlive(req stubs.Request, res *stubs.Response) (err err
 }
 
 func (s *Broker) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
-	for i := range workers {
-		go closeServers(workers[i], req.World, req.Width, req.Height, req.Turns)
+	for i := 0; i < 4; i++ {
+		mu.Lock()
+		closeServers(workers[i], req.World, req.Width, req.Height, req.Turns)
+		mu.Unlock()
 	}
 	os.Exit(3)
 	//s.shut <- true
@@ -318,6 +315,16 @@ func main() {
 	rpc.Register(task)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
+
+	workers = make([]*rpc.Client, 4)
+	address := "127.0.0.1:803"
+	for i := 0; i < 4; i++ {
+		end := strconv.Itoa(i + 1)
+		workers[i], _ = rpc.Dial("tcp", address+end)
+		//fmt.Println(address + end)
+		//fmt.Println(reflect.TypeOf(address + end))
+		defer workers[i].Close()
+	}
 
 	//var mu sync.Mutex
 	rpc.Accept(listener)

@@ -86,7 +86,6 @@ type GolOperations struct {
 }
 
 func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Response) (err error) {
-
 	turn := 0
 	globalWorld = req.World
 	//for turn < req.Turns {
@@ -120,7 +119,6 @@ func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (
 }
 
 func (s *GolOperations) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
-	fmt.Println("test")
 	os.Exit(3)
 	//s.shut <- true
 	//fmt.Println(req.Kill)
