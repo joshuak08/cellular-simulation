@@ -1,9 +1,9 @@
 package stubs
 
-var TurnHandler = "GolOperations.CalculateNextWorld"
-var AliveHandler = "GolOperations.CalculateAlive"
-var SnapshotHandler = "GolOperations.Snapshot"
-var ShutHandler = "GolOperations.ShutServer"
+var TurnHandler = "Broker.CalculateNextWorld"
+var AliveHandler = "Broker.CalculateAlive"
+var SnapshotHandler = "Broker.Snapshot"
+var ShutHandler = "Broker.ShutServer"
 
 type Response struct {
 	Turns      int
@@ -12,8 +12,10 @@ type Response struct {
 }
 
 type Request struct {
-	World  [][]byte
-	Width  int
+	World [][]byte
+	Width int
+	//StartY int
+	//EndY   int
 	Height int
 	Turns  int
 	Kill   bool

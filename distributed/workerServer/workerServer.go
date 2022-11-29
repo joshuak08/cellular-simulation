@@ -6,10 +6,8 @@ import (
 	"math/rand"
 	"net"
 	"net/rpc"
-	"os"
 	"sync"
 	"time"
-	"uk.ac.bris.cs/gameoflife/bStubs"
 	"uk.ac.bris.cs/gameoflife/stubs"
 	"uk.ac.bris.cs/gameoflife/util"
 )
@@ -21,9 +19,6 @@ var aliveCount int
 var globalTurns int
 var mu sync.Mutex
 var globalWorld [][]byte
-var shut chan bool
-
-// Gol Logic
 
 func calculateNextState(world [][]byte, startY, endY, ImageHeight, ImageWidth int) [][]byte {
 	// Make allocates an array and returns a slice that refers to that array
@@ -85,24 +80,24 @@ type GolOperations struct {
 	shut chan bool
 }
 
-func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Response) (err error) {
+func (s *GolOperations) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
 
 	turn := 0
 	globalWorld = req.World
-	//for turn < req.Turns {
-	globalWorld = calculateNextState(req.World, req.StartY, req.EndY, req.Height, req.Width)
-	lenAliveCount := len(calculateAliveCells(globalWorld))
+	for turn < req.Turns {
+		globalWorld = calculateNextState(globalWorld, 0, req.Height, req.Height, req.Width)
+		lenAliveCount := len(calculateAliveCells(globalWorld))
 
-	mu.Lock()
-	aliveCount = lenAliveCount
-	mu.Unlock()
+		mu.Lock()
+		aliveCount = lenAliveCount
+		mu.Unlock()
 
-	//fmt.Println("Alive Cells", aliveCount)
-	turn++
-	mu.Lock()
-	globalTurns = turn
-	mu.Unlock()
-	//}
+		//fmt.Println("Alive Cells", aliveCount)
+		turn++
+		mu.Lock()
+		globalTurns = turn
+		mu.Unlock()
+	}
 	res.Turns = turn
 	res.World = globalWorld
 	return
@@ -120,9 +115,7 @@ func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (
 }
 
 func (s *GolOperations) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
-	fmt.Println("test")
-	os.Exit(3)
-	//s.shut <- true
+	s.shut <- true
 	//fmt.Println(req.Kill)
 	//shut <- true
 	//fmt.Println("test")
@@ -142,9 +135,7 @@ func (s *GolOperations) Snapshot(req stubs.Request, res *stubs.Response) (err er
 }
 
 func main() {
-	//shut <- false
-	//var port string
-	//flag.StringVar(&port, "p", "root", "Specify username. Default is root")
+	//have to change port for each AWS instance with command line arguments
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
@@ -153,14 +144,13 @@ func main() {
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 
-	//var mu sync.Mutex
-	rpc.Accept(listener)
-	//select {
-	//case <-task.shut:
-	//	fmt.Println("main")
-	//	close(task.shut)
-	//	listener.Close()
-	//}
+	go rpc.Accept(listener)
+	select {
+	case <-task.shut:
+		fmt.Println("main")
+		close(task.shut)
+		listener.Close()
+	}
 	//<-shut
 	//			listener.Close()
 	//			return

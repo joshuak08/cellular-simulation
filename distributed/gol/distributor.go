@@ -23,14 +23,14 @@ const alive = 255
 const dead = 0
 
 func makeCallWorld(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
+	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, false}
 	response := new(stubs.Response)
 	client.Call(stubs.TurnHandler, request, response)
 	return response
 }
 
 func makeCallAliveCells(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) *stubs.Response {
-	request := stubs.Request{world, ImageHeight, ImageWidth, Turns, false}
+	request := stubs.Request{world, ImageWidth, ImageHeight, Turns, false}
 	response := new(stubs.Response)
 	client.Call(stubs.AliveHandler, request, response)
 	return response
@@ -74,8 +74,9 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	// TODO: Execute all turns of the Game of Life.
 	done := make(chan bool)
 
-	client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
-	defer client.Close()
+	//client, _ := rpc.Dial("tcp", "127.0.0.1:8030")
+	broker, _ := rpc.Dial("tcp", "127.0.0.1:8030")
+	defer broker.Close()
 
 	ticker := time.NewTicker(2 * time.Second)
 	//block := make(chan bool)
@@ -85,7 +86,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 		for {
 			select {
 			case key := <-keyPresses:
-				snapshot := makeCallSnapshot(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
+				snapshot := makeCallSnapshot(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
 				switch key {
 				case 's':
 					c.ioCommand <- ioOutput
@@ -134,25 +135,25 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 					}
 					fmt.Println("Quitting and killing server")
 					c.events <- ImageOutputComplete{snapshot.Turns, outfile}
-					closeServer(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
+					closeServer(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
 					c.events <- FinalTurnComplete{snapshot.Turns, calculateAliveCells(p, snapshot.World)}
 				}
 			case <-done:
 				return
 			case <-ticker.C:
-				response := makeCallAliveCells(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
-				cells := AliveCellsCount{response.Turns, response.AliveCells}
+				alive := makeCallAliveCells(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
+				cells := AliveCellsCount{alive.Turns, alive.AliveCells}
 				c.events <- cells
 			}
 		}
 	}()
 
+	response := makeCallWorld(broker, world, p.ImageWidth, p.ImageHeight, p.Turns)
+
 	// TODO: RPC Client code
 
 	//server := flag.String("server", "127.0.0.1:8030", "IP:port string to connect to as server")
 	//flag.Parse()
-
-	response := makeCallWorld(client, world, p.ImageWidth, p.ImageHeight, p.Turns)
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
 	c.ioCommand <- ioOutput
