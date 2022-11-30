@@ -3,20 +3,20 @@ package main
 import (
 	"flag"
 	"fmt"
-	"math"
 	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/bStubs"
 	"uk.ac.bris.cs/gameoflife/stubs"
+	"uk.ac.bris.cs/gameoflife/util"
 )
 
 const alive = 255
 const dead = 0
+const numNodes = 8
 
 var aliveCount int
 var globalTurns int
@@ -27,7 +27,6 @@ var working []bool
 
 // Gol Logic
 
-// RPC call to workers to calculate next state, response world passed into out channel
 func makeCallWorld(client *rpc.Client, world [][]byte, ImageHeight, ImageWidth, StartY, EndY, Turns int, out chan [][]byte) {
 	request := bStubs.Request{world, ImageWidth, StartY, EndY, ImageHeight, Turns, false}
 	response := new(bStubs.Response)
@@ -36,7 +35,6 @@ func makeCallWorld(client *rpc.Client, world [][]byte, ImageHeight, ImageWidth, 
 	return
 }
 
-// RPC call to shut down workers
 func closeServers(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, Turns int) {
 	request := bStubs.Request{world, ImageWidth, 0, 0, ImageHeight, Turns, true}
 	response := new(bStubs.Response)
@@ -44,22 +42,16 @@ func closeServers(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, T
 	return
 }
 
-// Function to split to multiple nodes based on the number of threads on input, with a maximum of 8 nodes
 func splitWorkers(req stubs.Request, world [][]byte, workers []*rpc.Client) [][]byte {
-	maximum := int(math.Min(8, float64(req.Threads)))
-
-	// Initialises the out channels
-	out := make([]chan [][]byte, maximum)
+	//minimum := int(math.Min(numNodes, float64(req.Threads)))
+	out := make([]chan [][]byte, numNodes)
 	for i := range out {
 		out[i] = make(chan [][]byte)
 	}
 
-	// Run all worker nodes in parallel
-	for j := 0; j < maximum; j++ {
-		go makeCallWorld(workers[j], world, req.Height, req.Width, j*len(world)/maximum, (j+1)*(len(world))/maximum, req.Turns, out[j])
+	for j := 0; j < numNodes; j++ {
+		go makeCallWorld(workers[j], world, req.Height, req.Width, j*len(world)/numNodes, (j+1)*(len(world))/numNodes, req.Turns, out[j])
 	}
-
-	// Outputs new world slices into newPixelData and returns the new world
 	var newPixelData [][]byte
 	for i := 0; i < len(out); i++ {
 		newPixelData = append(newPixelData, <-out[i]...)
@@ -67,37 +59,77 @@ func splitWorkers(req stubs.Request, world [][]byte, workers []*rpc.Client) [][]
 	return newPixelData
 }
 
-// Broker Struct for distributor/client to interact with broker through stubs
-type Broker struct{}
+type Broker struct {
+	shut chan bool
+}
 
-// Calculate number of alive cells in 2d slice/world and returns slice of type cells containing coordinates
-func calculateAliveCells(world [][]byte) int {
-	aliveCells := 0
+func calculateNextState(world [][]byte, startY, endY, ImageHeight, ImageWidth int) [][]byte {
+	// Make allocates an array and returns a slice that refers to that array
+	height := endY - startY
+	newGrid := make([][]byte, height)
+	for i := range newGrid {
+		// Allocate each []byte within [][]byte
+		newGrid[i] = make([]byte, ImageWidth)
+	}
+	for i := startY; i < endY; i++ {
+		for j := 0; j < ImageWidth; j++ {
+			neighbours := countNeighbours(i, j, world, ImageHeight, ImageWidth)
+			state := world[i][j]
+			if state == dead && neighbours == 3 {
+				newGrid[i-startY][j] = alive
+			} else if state == alive && (neighbours < 2 || neighbours > 3) {
+				newGrid[i-startY][j] = dead
+			} else {
+				newGrid[i-startY][j] = state
+			}
+		}
+	}
+	return newGrid
+}
+
+func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int {
+	var aliveCount = 0
+	for i := -1; i < 2; i++ {
+		for j := -1; j < 2; j++ {
+			// Don't count self as neighbour
+			if i == 0 && j == 0 {
+				continue
+			}
+			// Wraparound. Add height and width for negative values
+			r := (x + i + ImageWidth) % ImageWidth
+			c := (y + j + ImageHeight) % ImageHeight
+			if world[r][c] == alive {
+				aliveCount++
+			}
+		}
+	}
+	return aliveCount
+}
+
+func calculateAliveCells(world [][]byte) []util.Cell {
+	var aliveCells []util.Cell
 	for i := 0; i < len(world); i++ {
 		for j := 0; j < len(world[i]); j++ {
 			if world[i][j] == alive {
-				aliveCells++
+				newCell := util.Cell{X: j, Y: i}
+				aliveCells = append(aliveCells, newCell)
 			}
 		}
 	}
 	return aliveCells
 }
 
-// Receives RPC call from client/distributor that splits the workers and returns the udpated world, repeats this 100 turns
 func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err error) {
 	turn := 0
 	globalWorld = req.World
-	// Runs for at most 100 turns to update the world
 	for turn < req.Turns {
-		// splitWorkers returns new world state
 		mu.Lock()
 		globalWorld = splitWorkers(req, globalWorld, workers)
 		mu.Unlock()
-		// counts number of alive cells in update world
-		numAliveCount := calculateAliveCells(globalWorld)
+		lenAliveCount := len(calculateAliveCells(globalWorld))
 
 		mu.Lock()
-		aliveCount = numAliveCount
+		aliveCount = lenAliveCount
 		mu.Unlock()
 
 		turn++
@@ -110,7 +142,6 @@ func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err
 	return
 }
 
-// RPC call from client to broker to receive number of alive cells every 2s
 func (s *Broker) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
 	mu.Lock()
 	res.AliveCells = aliveCount
@@ -122,10 +153,9 @@ func (s *Broker) CalculateAlive(req stubs.Request, res *stubs.Response) (err err
 	return
 }
 
-// RPC call from client to broker to shut down all servers and broker
 func (s *Broker) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
 	mu.Lock()
-	for i := 0; i < 8; i++ {
+	for i := 0; i < numNodes; i++ {
 		closeServers(workers[i], req.World, req.Width, req.Height, req.Turns)
 	}
 	mu.Unlock()
@@ -133,7 +163,6 @@ func (s *Broker) ShutServer(req stubs.Request, res *stubs.Response) (err error) 
 	return
 }
 
-// RPC call from client to broker to receive current world to be saved
 func (s *Broker) Snapshot(req stubs.Request, res *stubs.Response) (err error) {
 	mu.Lock()
 	res.Turns = globalTurns
@@ -142,47 +171,47 @@ func (s *Broker) Snapshot(req stubs.Request, res *stubs.Response) (err error) {
 	return
 }
 
-// Main function to setup the broker and port to listen on
-// As well as register the Broker variable and register it
 func main() {
 	pAddr := flag.String("port", "8030", "Port to listen on")
 	flag.Parse()
 	rand.Seed(time.Now().UnixNano())
-	task := &Broker{}
+	task := &Broker{make(chan bool)}
 	rpc.Register(task)
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 
-	workers = make([]*rpc.Client, 8)
+	workers = make([]*rpc.Client, numNodes)
 	working = make([]bool, 8)
-	//address := make([]string, 8)
-	//address[0] = "44.202.193.217"
-	//address[1] = "3.92.74.150"
-	//address[2] = "3.237.61.26"
-	//address[3] = "34.201.14.21"
-	//address[4] = "3.237.62.60"
-	//address[5] = "3.92.6.47"
-	//address[6] = "44.204.220.91"
-	//address[7] = "3.227.232.131"
-	address := "127.0.0.1"
-	port := ":803"
+	address := make([]string, 8)
+	address[0] = "44.198.178.240"
+	address[1] = "3.239.200.67"
+	address[2] = "34.232.210.185"
+	address[3] = "44.211.60.221"
+	address[4] = "44.204.225.136"
+	address[5] = "3.231.152.80"
+	address[6] = "3.220.174.219"
+	address[7] = "44.200.208.37"
+	//address := "127.0.0.1"
+	port := ":8030"
 
-	// Dials into every address of the worker node
-	for i := 0; i < 8; i++ {
-		end := strconv.Itoa(i + 1)
+	for i := 0; i < numNodes; i++ {
+		//end := strconv.Itoa(i + 1)
 		//err := error()
-		fmt.Println(address + port + end)
-		workers[i], _ = rpc.Dial("tcp", address+port+end)
+		fmt.Println("address", address[i])
+		workers[i], _ = rpc.Dial("tcp", address[i]+port)
 
 		//if err != nil {
 		//	working[i] = false
 		//} else {
 		//	working[i] = true
 		//}
+
 		//workers[i] = worker
 		defer workers[i].Close()
-
 	}
+	fmt.Println("reach")
+	//wg.Wait()
+	fmt.Println("reach1")
 
 	rpc.Accept(listener)
 }
