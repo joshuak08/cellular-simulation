@@ -2,11 +2,13 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math"
 	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/bStubs"
@@ -42,7 +44,7 @@ func closeServers(client *rpc.Client, world [][]byte, ImageWidth, ImageHeight, T
 }
 
 func splitWorkers(req stubs.Request, world [][]byte, workers []*rpc.Client) [][]byte {
-	minimum := int(math.Min(4, float64(req.Threads)))
+	minimum := int(math.Min(8, float64(req.Threads)))
 	out := make([]chan [][]byte, minimum)
 	for i := range out {
 		out[i] = make(chan [][]byte)
@@ -177,34 +179,37 @@ func main() {
 	listener, _ := net.Listen("tcp", ":"+*pAddr)
 	defer listener.Close()
 
-	workers = make([]*rpc.Client, 4)
-	working = make([]bool, 4)
-	address := make([]string, 8)
-	address[0] = "44.202.193.217"
-	address[1] = "3.92.74.150"
-	address[2] = "3.237.61.26"
-	address[3] = "34.201.14.21"
-	address[4] = "3.237.62.60"
-	address[5] = "3.92.6.47"
-	address[6] = "44.204.220.91"
-	address[7] = "3.227.232.131"
-	//address := "127.0.0.1"
-	port := ":8030"
+	workers = make([]*rpc.Client, 8)
+	working = make([]bool, 8)
+	//address := make([]string, 8)
+	//address[0] = "44.202.193.217"
+	//address[1] = "3.92.74.150"
+	//address[2] = "3.237.61.26"
+	//address[3] = "34.201.14.21"
+	//address[4] = "3.237.62.60"
+	//address[5] = "3.92.6.47"
+	//address[6] = "44.204.220.91"
+	//address[7] = "3.227.232.131"
+	address := "127.0.0.1"
+	port := ":803"
 
-	for i := 0; i < 4; i++ {
-		//end := strconv.Itoa(i + 1)
+	for i := 0; i < 8; i++ {
+		end := strconv.Itoa(i + 1)
 		//err := error()
-		workers[i], _ = rpc.Dial("tcp", address[i]+port)
+		fmt.Println(address + port + end)
+		workers[i], _ = rpc.Dial("tcp", address+port+end)
 
 		//if err != nil {
 		//	working[i] = false
 		//} else {
 		//	working[i] = true
 		//}
-
 		//workers[i] = worker
 		defer workers[i].Close()
+
 	}
+	//for i := range workers {
+	//}
 
 	rpc.Accept(listener)
 }

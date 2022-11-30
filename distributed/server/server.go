@@ -17,6 +17,7 @@ import (
 const alive = 255
 const dead = 0
 
+// Global variables to interact with other RPC call functions
 var aliveCount int
 var globalTurns int
 var mu sync.Mutex
@@ -32,11 +33,13 @@ func calculateNextState(world [][]byte, startY, endY, ImageHeight, ImageWidth in
 		newGrid[i] = make([]byte, ImageWidth)
 	}
 
-	//
+	// It computes the GoL logic for its specific slice for each thread
 	for i := startY; i < endY; i++ {
 		for j := 0; j < ImageWidth; j++ {
+			// Counts number of neighbours for each cell
 			neighbours := countNeighbours(i, j, world, ImageHeight, ImageWidth)
 			state := world[i][j]
+			// Gol logic
 			if state == dead && neighbours == 3 {
 				newGrid[i-startY][j] = alive
 			} else if state == alive && (neighbours < 2 || neighbours > 3) {
@@ -49,6 +52,7 @@ func calculateNextState(world [][]byte, startY, endY, ImageHeight, ImageWidth in
 	return newGrid
 }
 
+// Counts the number of neighbours for each cell/entry
 func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int {
 	var aliveCount = 0
 	for i := -1; i < 2; i++ {
@@ -57,11 +61,9 @@ func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int 
 			if i == 0 && j == 0 {
 				continue
 			}
-			// Wraparound. Add height and width for negative values
+			// Wrap-around. Add height and width for negative values
 			r := (x + i + ImageWidth) % ImageWidth
 			c := (y + j + ImageHeight) % ImageHeight
-			fmt.Println("print r", r)
-			fmt.Println("print c", c)
 			if world[r][c] == alive {
 				aliveCount++
 			}
@@ -73,6 +75,7 @@ func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int 
 // Calculates number of alive cells in the world after each iteration, it returns a slice with type util.Cell
 func calculateAliveCells(world [][]byte) []util.Cell {
 	var aliveCells []util.Cell
+	// Iterate through every cell and count number of alive cells to update
 	for i := 0; i < len(world); i++ {
 		for j := 0; j < len(world[i]); j++ {
 			if world[i][j] == alive {
@@ -84,15 +87,19 @@ func calculateAliveCells(world [][]byte) []util.Cell {
 	return aliveCells
 }
 
+// GolOperations struct for broker rpc calls
 type GolOperations struct{}
 
+// RPC call from broker to server/nodes to calculate next state
 func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Response) (err error) {
 	turn := 0
 	globalWorld = req.World
-	//for turn < req.Turns {
+
+	// globalWorld gets new world state
 	globalWorld = calculateNextState(req.World, req.StartY, req.EndY, req.Height, req.Width)
 	lenAliveCount := len(calculateAliveCells(globalWorld))
 
+	// updates global aliveCount
 	mu.Lock()
 	aliveCount = lenAliveCount
 	mu.Unlock()
@@ -101,12 +108,14 @@ func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Respo
 	mu.Lock()
 	globalTurns = turn
 	mu.Unlock()
-	//}
+
+	// Updates response turn and world with the global variables
 	res.Turns = turn
 	res.World = globalWorld
 	return
 }
 
+// RPC call to udpate response AliveCells and Turns
 func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
 	mu.Lock()
 	res.AliveCells = aliveCount
@@ -118,11 +127,13 @@ func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (
 	return
 }
 
+// RPC call to shut down server
 func (s *GolOperations) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
 	os.Exit(3)
 	return
 }
 
+// RPC call to save current image
 func (s *GolOperations) Snapshot(req stubs.Request, res *stubs.Response) (err error) {
 	res.Turns = globalTurns
 	fmt.Println("globalWorld")
