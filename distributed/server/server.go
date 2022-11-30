@@ -11,7 +11,6 @@ import (
 	"time"
 	"uk.ac.bris.cs/gameoflife/bStubs"
 	"uk.ac.bris.cs/gameoflife/stubs"
-	"uk.ac.bris.cs/gameoflife/util"
 )
 
 const alive = 255
@@ -73,21 +72,20 @@ func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int 
 }
 
 // Calculates number of alive cells in the world after each iteration, it returns a slice with type util.Cell
-func calculateAliveCells(world [][]byte) []util.Cell {
-	var aliveCells []util.Cell
+func calculateAliveCells(world [][]byte) int {
+	aliveCells := 0
 	// Iterate through every cell and count number of alive cells to update
 	for i := 0; i < len(world); i++ {
 		for j := 0; j < len(world[i]); j++ {
 			if world[i][j] == alive {
-				newCell := util.Cell{X: j, Y: i}
-				aliveCells = append(aliveCells, newCell)
+				aliveCells++
 			}
 		}
 	}
 	return aliveCells
 }
 
-// GolOperations struct for broker rpc calls
+// GolOperations struct for broker to interact with server/worker nodes
 type GolOperations struct{}
 
 // RPC call from broker to server/nodes to calculate next state
@@ -96,12 +94,14 @@ func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Respo
 	globalWorld = req.World
 
 	// globalWorld gets new world state
+	mu.Lock()
 	globalWorld = calculateNextState(req.World, req.StartY, req.EndY, req.Height, req.Width)
-	lenAliveCount := len(calculateAliveCells(globalWorld))
+	mu.Unlock()
+	numAliveCount := calculateAliveCells(globalWorld)
 
 	// updates global aliveCount
 	mu.Lock()
-	aliveCount = lenAliveCount
+	aliveCount = numAliveCount
 	mu.Unlock()
 
 	turn++
