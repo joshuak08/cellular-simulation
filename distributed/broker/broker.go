@@ -87,15 +87,13 @@ func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err
 	// Runs for at most 100 turns to update the world
 	for turn < req.Turns {
 		// splitWorkers returns new world state
-		tmpWorld := splitWorkers(req, globalWorld, workers)
 		mu.Lock()
-		globalWorld = tmpWorld
+		globalWorld = splitWorkers(req, globalWorld, workers)
 		mu.Unlock()
 		// counts number of alive cells in update world
-		numAliveCount := calculateAliveCells(globalWorld)
 
 		mu.Lock()
-		aliveCount = numAliveCount
+		aliveCount = calculateAliveCells(globalWorld)
 		mu.Unlock()
 
 		turn++
