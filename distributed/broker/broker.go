@@ -91,9 +91,10 @@ func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err
 		globalWorld = splitWorkers(req, globalWorld, workers)
 		mu.Unlock()
 		// counts number of alive cells in update world
+		numAliveCount := calculateAliveCells(globalWorld)
 
 		mu.Lock()
-		aliveCount = calculateAliveCells(globalWorld)
+		aliveCount = numAliveCount
 		mu.Unlock()
 
 		turn++
@@ -159,15 +160,24 @@ func main() {
 	//address[5] = "44.198.166.54"
 	//address[6] = "34.201.32.210"
 	//address[7] = "3.215.185.178"
+
+	// AWS PORT
+	//port := "8030"
+
+	// LOCAL PORT
 	address := "127.0.0.1"
 	port := ":803"
 
 	// Dials into every address of the worker node
 	for i := 0; i < 8; i++ {
+		// WORKERS AWS
 		//fmt.Println(address[i] + port)
-		workers[i], _ = rpc.Dial("tcp", address+port+strconv.Itoa(i+1))
-		defer workers[i].Close()
+		//workers[i], _ = rpc.Dial("tcp", address[i]+port)
 
+		// WORKERS LOCAL
+		workers[i], _ = rpc.Dial("tcp", address+port+strconv.Itoa(i+1))
+
+		defer workers[i].Close()
 	}
 
 	rpc.Accept(listener)
