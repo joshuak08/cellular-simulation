@@ -151,6 +151,8 @@ func main() {
 	defer listener.Close()
 
 	workers = make([]*rpc.Client, 8)
+
+	//AWS ADDRESSES
 	address := make([]string, 8)
 	address[0] = "44.200.132.137"
 	address[1] = "44.212.47.118"
@@ -174,7 +176,8 @@ func main() {
 		fmt.Println(address[i] + port)
 		workers[i], _ = rpc.Dial("tcp", address[i]+port)
 
-		// WORKERS LOCAL
+		// WORKERS LOCAL - Usage: $ go run server.go -port=8031 .. 8038
+		//fmt.Println(address + port + strconv.Itoa(i+1))
 		//workers[i], _ = rpc.Dial("tcp", address+port+strconv.Itoa(i+1))
 
 		defer workers[i].Close()

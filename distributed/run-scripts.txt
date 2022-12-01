@@ -1,6 +1,0 @@
-GO111MODULE=off go get golang.org/x/perf/cmd/benchstat
-go test -timeout 10h -run ^$ -bench . -benchtime 1x -count 5 | tee results.out
-go run golang.org/x/perf/cmd/benchstat -csv results.out | tee results.csv
-python3 plot.py
-ssh ec2-user@ -i ~/.ssh/gol-server-key-pair.pem
-
