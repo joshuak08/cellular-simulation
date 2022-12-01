@@ -124,13 +124,14 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	pPressed := false
 	// Bool channel to exit out of the following go routine when it is execution is done
 	done := make(chan bool)
+	key := 'a'
 
 	// Goroutine to check if any keys pressed, ticker is ticking, or
 	go func() {
 		for {
 			select {
 			// Receives keys pressed
-			case key := <-keyPresses:
+			case key = <-keyPresses:
 				// Calls to receive current world to be saved into a pgm file
 				snapshot := makeCallSnapshot(broker, world, p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
 				switch key {
@@ -162,14 +163,13 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 				case 'k':
 					outImage(p, c, snapshot)
 					fmt.Println("Quitting and killing server")
-					//mu.Lock()
 					closeServer(broker, world, p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
-					//mu.Unlock()
 					c.events <- FinalTurnComplete{snapshot.Turns, calculateAliveCells(p, snapshot.World)}
-
 					c.events <- StateChange{snapshot.Turns, Quitting}
+					close(c.events)
 					c.ioCommand <- ioCheckIdle
 					<-c.ioIdle
+					return
 				}
 			// When done receives a true value, it returns out of this go routine function
 			case <-done:
@@ -192,11 +192,16 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 	// TODO: RPC Client code
 
 	// TODO: Report the final state using FinalTurnCompleteEvent.
+	// if k pressed return
+	if key == 'k' {
+		return
+	}
 	// Outputs world
 	outImage(p, c, response)
 	last := FinalTurnComplete{CompletedTurns: response.Turns, Alive: calculateAliveCells(p, response.World)}
 	// Tick until final turn
 	done <- true
+	// Sends FinalTurnComplete event to events channel
 	c.events <- last
 
 	c.events <- StateChange{response.Turns, Quitting}

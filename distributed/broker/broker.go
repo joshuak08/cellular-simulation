@@ -2,11 +2,13 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math"
 	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/bStubs"
@@ -21,6 +23,7 @@ var globalTurns int
 var mu sync.Mutex
 var globalWorld [][]byte
 var workers []*rpc.Client
+var working []bool
 
 // Gol Logic
 
@@ -151,20 +154,32 @@ func main() {
 	defer listener.Close()
 
 	workers = make([]*rpc.Client, 8)
-	address := make([]string, 8)
-	address[0] = "44.202.193.217"
-	address[1] = "3.92.74.150"
-	address[2] = "3.237.61.26"
-	address[3] = "34.201.14.21"
-	address[4] = "3.237.62.60"
-	address[5] = "3.92.6.47"
-	address[6] = "44.204.220.91"
-	address[7] = "3.227.232.131"
-	port := ":8030"
+	working = make([]bool, 8)
+	//address := make([]string, 8)
+	//address[0] = "44.202.193.217"
+	//address[1] = "3.92.74.150"
+	//address[2] = "3.237.61.26"
+	//address[3] = "34.201.14.21"
+	//address[4] = "3.237.62.60"
+	//address[5] = "3.92.6.47"
+	//address[6] = "44.204.220.91"
+	//address[7] = "3.227.232.131"
+	address := "127.0.0.1"
+	port := ":803"
 
 	// Dials into every address of the worker node
 	for i := 0; i < 8; i++ {
-		workers[i], _ = rpc.Dial("tcp", address[i]+port)
+		end := strconv.Itoa(i + 1)
+		//err := error()
+		fmt.Println(address + port + end)
+		workers[i], _ = rpc.Dial("tcp", address+port+end)
+
+		//if err != nil {
+		//	working[i] = false
+		//} else {
+		//	working[i] = true
+		//}
+		//workers[i] = worker
 		defer workers[i].Close()
 
 	}
