@@ -2,12 +2,12 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"math"
 	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
+	"strconv"
 	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/bStubs"
@@ -87,8 +87,9 @@ func (s *Broker) CalculateNextWorld(req stubs.Request, res *stubs.Response) (err
 	// Runs for at most 100 turns to update the world
 	for turn < req.Turns {
 		// splitWorkers returns new world state
+		tmpWorld := splitWorkers(req, globalWorld, workers)
 		mu.Lock()
-		globalWorld = splitWorkers(req, globalWorld, workers)
+		globalWorld = tmpWorld
 		mu.Unlock()
 		// counts number of alive cells in update world
 		numAliveCount := calculateAliveCells(globalWorld)
@@ -151,22 +152,22 @@ func main() {
 	defer listener.Close()
 
 	workers = make([]*rpc.Client, 8)
-	address := make([]string, 8)
-	address[0] = "44.202.200.133"
-	address[1] = "44.204.200.246"
-	address[2] = "100.25.98.99"
-	address[3] = "44.200.14.216"
-	address[4] = "18.209.228.193"
-	address[5] = "44.198.166.54"
-	address[6] = "34.201.32.210"
-	address[7] = "3.215.185.178"
-	//address := "127.0.0.1"
-	port := ":8030"
+	//address := make([]string, 8)
+	//address[0] = "44.202.200.133"
+	//address[1] = "44.204.200.246"
+	//address[2] = "100.25.98.99"
+	//address[3] = "44.200.14.216"
+	//address[4] = "18.209.228.193"
+	//address[5] = "44.198.166.54"
+	//address[6] = "34.201.32.210"
+	//address[7] = "3.215.185.178"
+	address := "127.0.0.1"
+	port := ":803"
 
 	// Dials into every address of the worker node
 	for i := 0; i < 8; i++ {
-		fmt.Println(address[i] + port)
-		workers[i], _ = rpc.Dial("tcp", address[i]+port)
+		//fmt.Println(address[i] + port)
+		workers[i], _ = rpc.Dial("tcp", address+port+strconv.Itoa(i+1))
 		defer workers[i].Close()
 
 	}

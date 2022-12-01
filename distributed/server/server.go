@@ -76,8 +76,9 @@ func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Respo
 	globalWorld = req.World
 
 	// globalWorld gets new world state
+	newWorldState := calculateNextState(req.World, req.StartY, req.EndY, req.Height, req.Width)
 	mu.Lock()
-	globalWorld = calculateNextState(req.World, req.StartY, req.EndY, req.Height, req.Width)
+	globalWorld = newWorldState
 	mu.Unlock()
 
 	// Updates response world with the global variables
