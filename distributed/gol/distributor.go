@@ -86,7 +86,7 @@ func createWorld(p Params, c distributorChannels) [][]byte {
 	return world
 }
 
-// Outputs image into ioOutput and notifies events channel that image output complete
+// Outputs image into ioOutput and sends event imageOutputComplete to events channel
 func outImage(p Params, c distributorChannels, snapshot *stubs.Response) {
 	// Sets command to output
 	c.ioCommand <- ioOutput
@@ -99,7 +99,7 @@ func outImage(p Params, c distributorChannels, snapshot *stubs.Response) {
 			c.ioOutput <- snapshot.World[i][j]
 		}
 	}
-	// Notify events channel that image output done, with relavant turns and filename
+	// Notify events channel that image output done, with relevant turns and filename
 	c.events <- ImageOutputComplete{snapshot.Turns, outfile}
 }
 
@@ -179,7 +179,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 				// Makes rpc call function to retrieve num of alive cells
 				tick := makeCallAliveCells(broker, world, p.ImageWidth, p.ImageHeight, p.Turns, p.Threads)
 				cells := AliveCellsCount{tick.Turns, tick.AliveCells}
-				// Sends it down events channel to notify num of alive cells
+				// Sends it down events channel to update num of alive cells
 				c.events <- cells
 			}
 		}

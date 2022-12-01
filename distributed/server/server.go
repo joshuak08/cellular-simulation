@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"math/rand"
 	"net"
 	"net/rpc"
@@ -17,8 +16,6 @@ const alive = 255
 const dead = 0
 
 // Global variables to interact with other RPC call functions
-var aliveCount int
-var globalTurns int
 var mu sync.Mutex
 var globalWorld [][]byte
 
@@ -71,75 +68,26 @@ func countNeighbours(x, y int, world [][]byte, ImageHeight, ImageWidth int) int 
 	return aliveCount
 }
 
-// Calculates number of alive cells in the world after each iteration, it returns a slice with type util.Cell
-func calculateAliveCells(world [][]byte) int {
-	aliveCells := 0
-	// Iterate through every cell and count number of alive cells to update
-	for i := 0; i < len(world); i++ {
-		for j := 0; j < len(world[i]); j++ {
-			if world[i][j] == alive {
-				aliveCells++
-			}
-		}
-	}
-	return aliveCells
-}
-
 // GolOperations struct for broker to interact with server/worker nodes
 type GolOperations struct{}
 
 // RPC call from broker to server/nodes to calculate next state
 func (s *GolOperations) CalculateNextWorld(req bStubs.Request, res *bStubs.Response) (err error) {
-	turn := 0
 	globalWorld = req.World
 
 	// globalWorld gets new world state
 	mu.Lock()
 	globalWorld = calculateNextState(req.World, req.StartY, req.EndY, req.Height, req.Width)
 	mu.Unlock()
-	numAliveCount := calculateAliveCells(globalWorld)
 
-	// updates global aliveCount
-	mu.Lock()
-	aliveCount = numAliveCount
-	mu.Unlock()
-
-	turn++
-	mu.Lock()
-	globalTurns = turn
-	mu.Unlock()
-
-	// Updates response turn and world with the global variables
-	res.Turns = turn
+	// Updates response world with the global variables
 	res.World = globalWorld
-	return
-}
-
-// RPC call to udpate response AliveCells and Turns
-func (s *GolOperations) CalculateAlive(req stubs.Request, res *stubs.Response) (err error) {
-	mu.Lock()
-	res.AliveCells = aliveCount
-	mu.Unlock()
-
-	mu.Lock()
-	res.Turns = globalTurns
-	mu.Unlock()
 	return
 }
 
 // RPC call to shut down server
 func (s *GolOperations) ShutServer(req stubs.Request, res *stubs.Response) (err error) {
 	os.Exit(3)
-	return
-}
-
-// RPC call to save current image
-func (s *GolOperations) Snapshot(req stubs.Request, res *stubs.Response) (err error) {
-	res.Turns = globalTurns
-	fmt.Println("globalWorld")
-	//mu.Lock()
-	res.World = globalWorld
-	//mu.Unlock()
 	return
 }
 
