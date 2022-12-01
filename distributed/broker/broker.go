@@ -2,12 +2,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"math"
 	"math/rand"
 	"net"
 	"net/rpc"
 	"os"
-	"strconv"
 	"sync"
 	"time"
 	"uk.ac.bris.cs/gameoflife/bStubs"
@@ -151,34 +151,35 @@ func main() {
 	defer listener.Close()
 
 	workers = make([]*rpc.Client, 8)
-	//address := make([]string, 8)
-	//address[0] = "44.202.200.133"
-	//address[1] = "44.204.200.246"
-	//address[2] = "100.25.98.99"
-	//address[3] = "44.200.14.216"
-	//address[4] = "18.209.228.193"
-	//address[5] = "44.198.166.54"
-	//address[6] = "34.201.32.210"
-	//address[7] = "3.215.185.178"
+	address := make([]string, 8)
+	address[0] = "44.200.132.137"
+	address[1] = "44.212.47.118"
+	address[2] = "44.200.201.158"
+	address[3] = "44.197.193.0"
+	address[4] = "44.198.171.45"
+	address[5] = "3.221.127.69"
+	address[6] = "3.238.147.211"
+	address[7] = "54.236.241.48"
 
 	// AWS PORT
-	//port := "8030"
+	port := ":8030"
 
 	// LOCAL PORT
-	address := "127.0.0.1"
-	port := ":803"
+	//address := "127.0.0.1"
+	//port := ":803"
 
 	// Dials into every address of the worker node
 	for i := 0; i < 8; i++ {
 		// WORKERS AWS
-		//fmt.Println(address[i] + port)
-		//workers[i], _ = rpc.Dial("tcp", address[i]+port)
+		fmt.Println(address[i] + port)
+		workers[i], _ = rpc.Dial("tcp", address[i]+port)
 
 		// WORKERS LOCAL
-		workers[i], _ = rpc.Dial("tcp", address+port+strconv.Itoa(i+1))
+		//workers[i], _ = rpc.Dial("tcp", address+port+strconv.Itoa(i+1))
 
 		defer workers[i].Close()
 	}
+	fmt.Println("--- PORTS LOGGED")
 
 	rpc.Accept(listener)
 }
