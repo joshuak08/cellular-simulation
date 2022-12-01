@@ -106,6 +106,7 @@ func distributor(p Params, c distributorChannels, keyPresses <-chan rune) {
 					}
 				}
 			}
+		default:
 		}
 	}
 
